@@ -1,3 +1,6 @@
+import re
+import urllib.parse
+
 import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -60,26 +63,23 @@ async def command_start(message: types.Message, state: FSMContext):
     # I take post 1
     if payload:
         post = db.findpost(payload)[0]
-        author = db.finduserbyid(post[1])[0] # only for name, to be deleted otherwise
         if message.from_user.id == post[1]:
             await bot.send_message(message.chat.id, 'Вы кликнули на свой же пост!')
             # ------------------------
+
             await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
 
+            # data-----------------------------
+            encoded_data = urllib.parse.urlencode({
+                "completer": message.chat.id,
+                "postid": post[0]
+            })
+
             markup = types.InlineKeyboardMarkup()
-            item1 = types.InlineKeyboardButton('Подтвердить', callback_data='takeapprove')
-            item2 = types.InlineKeyboardButton('Отклонить', callback_data='takenot')
+            item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
+            item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
             markup.add(item1, item2)
 
-            #might be faulty -----------------------
-            new_state = FSMContext(storage, post[1], post[1])
-            await new_state.set_state(TakePosts.approving)
-
-            data = await new_state.get_data()
-            data["completer"] = message.chat.id
-            data["thatlink"] = post[10]
-            await new_state.set_data(data)
-            # ------------------------------------
             await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
 
         else:
@@ -87,43 +87,40 @@ async def command_start(message: types.Message, state: FSMContext):
                 f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
                 parse_mode=types.ParseMode.HTML)
 
+            # data-----------------------------
+            encoded_data = urllib.parse.urlencode({
+                "completer": message.chat.id,
+                "postid": post[0]
+            })
+
             markup = types.InlineKeyboardMarkup()
-            item1 = types.InlineKeyboardButton('Подтвердить', callback_data='takeapprove')
-            item2 = types.InlineKeyboardButton('Отклонить', callback_data='takenot')
+            item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
+            item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
             markup.add(item1, item2)
 
-            # might be faulty -----------------------
-            new_state = FSMContext(storage, post[1], post[1])
-            await new_state.set_state(TakePosts.approving)
-
-            data = await new_state.get_data()
-            data["completer"] = message.chat.id
-            data["thatlink"] = post[10]
-            await new_state.set_data(data)
-            # ------------------------------------
             await bot.send_message(post[1],
                                    f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}",
                                    reply_markup=markup, parse_mode=types.ParseMode.HTML)
+
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-        #conditional print ---
         markup.add('Новый пост', 'Мои посты', 'Мои деньги')
         db.makeuser(message.chat.id, message.from_user.full_name)
 
-        #db.temp_adduser_id(message.chat.id) database ---
-        #await Form.default.set()
+
         await message.answer(f'Здравствуйте, это бот паблика «TurtleUA», выберите одно действие из меню.', reply_markup=markup)
 #start2
 @dp.message_handler(lambda message: message.text in ['Новый пост', 'Мои посты', 'Мои деньги'], state='*')
 async def starthandlertwo(message: types.Message, state: FSMContext):
     # New Post 1
     if message.text == 'Новый пост':
+
         markup = types.InlineKeyboardMarkup()
         item1 = types.InlineKeyboardButton('Защищенный', callback_data='protected')
         item2 = types.InlineKeyboardButton('Обычный', callback_data='ordinary')
         markup.add(item1, item2)
-
+        msg = await bot.send_message(message.chat.id, "Загрузка...", reply_markup=types.ReplyKeyboardRemove())
+        await msg.delete()
         await bot.send_message(message.chat.id, 'Защищеный или обычный пост: ', reply_markup=markup)
         await NewPost.protection.set()
 # ______________________________________
@@ -135,7 +132,7 @@ async def starthandlertwo(message: types.Message, state: FSMContext):
             posts = db.findallposts(message.chat.id)
             n = 0
             for i in posts:
-                p = types.InlineKeyboardButton(f'Тема - {i[5]}, задание - {i[6]}, {i[2]}',
+                p = types.InlineKeyboardButton(f'{i[5]}, {i[6]}, {i[2]}',
                                                    callback_data=f'myposts{str(n)}')
                 markup.add(p)
                 n += 1
@@ -156,7 +153,12 @@ async def newpostprotection(callbackQuery: types.CallbackQuery, state: FSMContex
 
         await bot.edit_message_text('Укажите название предмета или тему задания', callbackQuery.message.chat.id, callbackQuery.message.message_id)
         await NewPost.next()
-
+    elif callbackQuery.data == 'ordinary':
+        # DATA
+        async with state.proxy() as data:
+            data["protection"] = callbackQuery.data
+        await bot.edit_message_text('Укажите название предмета или тему задания', callbackQuery.message.chat.id, callbackQuery.message.message_id)
+        await NewPost.next()
 
 # New Post 3
 @dp.message_handler(state=NewPost.theme)
@@ -164,51 +166,67 @@ async def newposttheme(message: types.Message, state: FSMContext):
     # DATA
     async with state.proxy() as data:
         data["theme"] = message.text
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add('Отменить')
 
-    await bot.send_message(message.chat.id, f"Напишите краткое описание того, что нужно сделать")
+    await bot.send_message(message.chat.id, f"Напишите краткое описание того, что нужно сделать", reply_markup=markup)
     await NewPost.next()
 
 # New Post 4
 @dp.message_handler(state=NewPost.maintext)
 async def newposttext(message: types.Message, state: FSMContext):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('Договорная', 'Отменить')
-    # DATA
-    async with state.proxy() as data:
-        data["maintext"] = message.text
+    #cancel
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Новый пост', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.chat.id, "Отменено", reply_markup=markup)
+    else:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Договорная', 'Отменить')
+        # DATA
+        async with state.proxy() as data:
+            data["maintext"] = message.text
 
-    await bot.send_message(message.chat.id, f"Назвите цену или нажмите «Договорная»", reply_markup=markup)
-    await NewPost.next()
+        await bot.send_message(message.chat.id, f"Назвите цену или нажмите «Договорная» \n\nНапример, чтобы указать цену в 100 грн, введите «100»", reply_markup=markup)
+        await NewPost.next()
 
 # New Post 5
 @dp.message_handler(state=NewPost.price)
 async def newpostprice(message: types.Message, state: FSMContext):
-    if message.text == "Договорная":
+    # cancel
+    if message.text == "Отменить":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Готово', 'Отменить')
-        # DATA
-        async with state.proxy() as data:
-            data["price"] = message.text
-            data["mediaid"] = []
-            data["docid"] = []
-        await bot.send_message(message.chat.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
-        await NewPost.next()
-
-    elif message.text.isnumeric():
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Готово', 'Отменить')
-
-        # DATA
-        async with state.proxy() as data:
-            data["price"] = message.text
-            data["mediaid"] = []
-            data["docid"] = []
-        await bot.send_message(message.chat.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
-        await NewPost.next()
-
+        markup.add('Новый пост', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.chat.id, "Отменено", reply_markup=markup)
     else:
-        await bot.send_message(message.chat.id, f"Error handling")
+        if message.text == "Договорная":
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Готово', 'Отменить')
+            # DATA
+            async with state.proxy() as data:
+                data["price"] = message.text
+                data["mediaid"] = []
+                data["docid"] = []
+            await bot.send_message(message.chat.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
+            await NewPost.next()
+
+        elif message.text.isnumeric():
+
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Готово', 'Отменить')
+
+            # DATA
+            async with state.proxy() as data:
+                data["price"] = message.text
+                data["mediaid"] = []
+                data["docid"] = []
+            await bot.send_message(message.chat.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
+            await NewPost.next()
+
+        else:
+            await bot.send_message(message.chat.id, f"Ошибка в указании цены, правильно указать цену без текста\nНапример, чтобы указать цену в 100 грн, введите «100»")
 
 
 
@@ -259,69 +277,82 @@ async def album_handler(messages: List[types.Message], state: FSMContext):
 # New post 7 If user chooses, he could edit the post
 @dp.message_handler(state=NewPost.filehandle)
 async def newpostfilegotovo(message: types.Message, state: FSMContext):
-    if message.text == "Готово":
-        media = types.MediaGroup()
-        docs = types.MediaGroup()
-
-
-
-        async with state.proxy() as data:
-            for i in data["mediaid"]:
-                media.attach_photo(photo=i)
-            for j in data["docid"]:
-                docs.attach_document(document=j)
-
+    # cancel
+    if message.text == "Отменить":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Опубликовать', 'Отменить')
+        markup.add('Новый пост', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.chat.id, "Отменено", reply_markup=markup)
+    else:
+        if message.text == "Готово":
+            media = types.MediaGroup()
+            docs = []
 
-        async with state.proxy() as data:
-            data["medialink"] = ""
-            data["doclink"] = ""
-            #media
-            if len(data["mediaid"])>0:
-                filemessagephoto = await bot.send_media_group(filebotid, media)
-                data["medialink"] = hide_link(filemessagephoto[0].url)
-            if len(data["docid"])>0:
-                filemessagedoc = await bot.send_media_group(filebotid, docs)
-                data["doclink"] = hide_link(filemessagedoc[0].url)
-            #post
-            post = Post(active="Активный", author=message.from_user.id, completer="Нету",
-                        theme=data["theme"], maintext=data["maintext"], price=data["price"], mediaid=data["medialink"], docid=data["doclink"], protection=data["protection"])
-            data["post"] = post
-        #message
 
-        #send
-        await bot.send_message(message.chat.id, "Отлично, пост готов. Если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите Опубликовать", reply_markup=markup)
-        await bot.send_message(message.chat.id, post.tostring(), parse_mode=types.ParseMode.HTML)
-        await NewPost.next()
+
+            async with state.proxy() as data:
+                data["doclink"] = []
+                for i in data["mediaid"]:
+                    media.attach_photo(photo=i)
+                for j in data["docid"]:
+                    filemessagedoc = await bot.send_document(filebotid, j)
+                    docs.append(hide_link(filemessagedoc.url))
+                    data["doclink"].append(hide_link(filemessagedoc.url))
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Опубликовать', 'Отменить')
+
+            async with state.proxy() as data:
+                data["medialink"] = ""
+
+                #media
+                if len(data["mediaid"])>0:
+                    filemessagephoto = await bot.send_media_group(filebotid, media)
+                    data["medialink"] = hide_link(filemessagephoto[0].url)
+                #post
+                post = Post(active="Активный", author=message.from_user.id, completer="Нету",
+                            theme=data["theme"], maintext=data["maintext"], price=data["price"], mediaid=data["medialink"], docid=data["doclink"], protection=data["protection"])
+                data["post"] = post
+            #message
+
+            #send
+            await bot.send_message(message.chat.id, "Отлично, пост готов. Если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите Опубликовать", reply_markup=markup)
+            await bot.send_message(message.chat.id, post.tostring(), parse_mode=types.ParseMode.HTML)
+            await NewPost.next()
 
 # New post 8 Final, publish to main channel
 @dp.message_handler(state=NewPost.publish)
 async def newpostpublish(message: types.Message, state: FSMContext):
-    if message.text == 'Опубликовать':
-        markup = types.InlineKeyboardMarkup()
-        # chat1
-
-        async with state.proxy() as data:
-            postid = db.publishpost(data["post"])
-
-            link = await get_start_link(str(postid), encode=True)
-
-            item1 = types.InlineKeyboardButton('Беру', url=link)
-            markup.add(item1)
-
-            publishedmessage = await bot.send_message(publicationbotid, data["post"].tostring(), reply_markup=markup, parse_mode=types.ParseMode.HTML)
-            #linkhandle
-            linktopublished = publishedmessage.url
-            db.givepostalink(postid, linktopublished)
-
-
-        #user
-
-        markup2 = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup2.add('Новый пост', 'Мои посты', 'Мои деньги')
-        await bot.send_message(message.chat.id, f"Пост опубликован на основном канале {hide_link(linktopublished)}", reply_markup=markup2, parse_mode=types.ParseMode.HTML)
+    # cancel
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Новый пост', 'Мои посты', 'Мои деньги')
         await state.finish()
+        await bot.send_message(message.chat.id, "Отменено", reply_markup=markup)
+    else:
+        if message.text == 'Опубликовать':
+            markup = types.InlineKeyboardMarkup()
+            # chat1
+
+            async with state.proxy() as data:
+                postid = db.publishpost(data["post"])
+
+                link = await get_start_link(str(postid), encode=True)
+
+                item1 = types.InlineKeyboardButton('Беру', url=link)
+                markup.add(item1)
+
+                publishedmessage = await bot.send_message(publicationbotid, data["post"].tostring(), reply_markup=markup, parse_mode=types.ParseMode.HTML)
+                #linkhandle
+                linktopublished = publishedmessage.url
+                db.givepostalink(postid, linktopublished)
+
+
+            #user
+
+            markup2 = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup2.add('Новый пост', 'Мои посты', 'Мои деньги')
+            await bot.send_message(message.chat.id, f"Пост опубликован на основном канале {hide_link(linktopublished)}", reply_markup=markup2, parse_mode=types.ParseMode.HTML)
+            await state.finish()
 
 # My posts2
 @dp.callback_query_handler(lambda call: call.data in [f'myposts{str(x)}' for x in range(len(db.findallposts(call.message.chat.id)))], state=MyPosts.choice)
@@ -336,7 +367,7 @@ async def mypostsshow(call: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
         data["post"] = post
 
-    await bot.edit_message_text(f"{post}", call.message.chat.id, call.message.message_id, reply_markup=markup)
+    await bot.edit_message_text(f"<b>Статус:</b> {post[2]}\n<b>Выполнитель:</b> {post[3]}\n<b>Тип поста:</b> {'Защищённый пост' if post[4]=='protected' else 'Обычный пост'}\n<b>Тема:</b> {post[5]}\n<b>Задание:</b> {post[6]}\n<b>Цена:</b> {post[7]}", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode=types.ParseMode.HTML)
     await MyPosts.next()
 
 # My posts 3
@@ -345,6 +376,8 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
     if call.data == 'postdelete':
         async with state.proxy() as data:
             db.deletepost(data["post"][0])
+            message_id = re.search(r'/(\d+)$', data["post"][10]).group(1)
+            await bot.delete_message(publicationbotid, message_id)
 
         await bot.edit_message_text("Пост удалён!", call.message.chat.id, call.message.message_id)
 
@@ -354,7 +387,7 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
             posts = db.findallposts(call.message.chat.id)
             n = 0
             for i in posts:
-                p = types.InlineKeyboardButton(f'Тема - {i[5]}, задание - {i[6]}, {i[2]}',
+                p = types.InlineKeyboardButton(f'{i[5]},  {i[6]}, {i[2]}',
                                                    callback_data=f'myposts{str(n)}')
                 markup.add(p)
                 n += 1
@@ -362,32 +395,59 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
             await bot.edit_message_text('Выберите одну публикацию', call.message.chat.id, call.message.message_id, reply_markup=markup)
         else:
             await bot.send_message(call.message.chat.id, "У вас нету публикаций")
-# I take post 1
-@dp.callback_query_handler(lambda call: call.data in ['takeapprove', 'takenot'], state=TakePosts.approving)
+# I take post 2
+@dp.callback_query_handler(lambda call: call.data.startswith('takeapprove') or call.data.startswith('takenot'), state='*')
 async def approvingproc(call: types.CallbackQuery, state: FSMContext):
-    if call.data == 'takeapprove':
+    if call.data.startswith('takeapprove'):
         #get link for chat
         markup = types.InlineKeyboardMarkup()
         freechat = chatbotids.pop()
         occupiedchats.append(freechat)
+
+
+
         #data
-        data = await state.get_data()
-        completer = data["completer"]
-        thatlink = data["thatlink"] #postlink
+        encodeddata = call.data[11:]
+        decoded_data = urllib.parse.parse_qs(encodeddata)
+
+        completer = decoded_data["completer"][0]
+        postid = decoded_data["postid"][0]
+
+        post = db.findpost(postid)[0]
+        postlink = post[10]
+        #datafinish
+
+        # write data to chat db
+
         invitelink = await bot.create_chat_invite_link(freechat)
 
         item1 = types.InlineKeyboardButton('Открыть чат', url=f"{invitelink.invite_link}")
         markup.add(item1)
         await bot.edit_message_text('***Вы приняли заявку***\n\nТеперь вы можете открыть чат', call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
-        await bot.send_message(completer, f"<b>Пользователь</b> принял вашу заявку {hide_link(thatlink)}", parse_mode=types.ParseMode.HTML, reply_markup=markup)
+        await bot.send_message(completer, f"<b>Пользователь</b> принял вашу заявку {hide_link(postlink)}", parse_mode=types.ParseMode.HTML, reply_markup=markup)
 
-    elif call.data == 'takenot':
-        data = await state.get_data()
-        completer = data["completer"]
-        thatlink = data["thatlink"]
+    elif call.data.startswith('takenot'):
+        #data
+        encodeddata = call.data[7:]
+        decoded_data = urllib.parse.parse_qs(encodeddata)
+
+        completer = decoded_data["completer"][0]
+        postid = decoded_data["postid"][0]
+
+        post = db.findpost(postid)[0]
+        postlink = post[10]
+
         await bot.edit_message_text('Вы отклонили заявку на выполнение работы.', call.message.chat.id, call.message.message_id)
-        await bot.send_message(completer, f"Пользователь отклонил вашу заявку на выполнение работы {hide_link(thatlink)}", parse_mode=types.ParseMode.HTML)
+        await bot.send_message(completer, f"Пользователь отклонил вашу заявку на выполнение работы {hide_link(postlink)}", parse_mode=types.ParseMode.HTML)
 
+# I take post 3
+@dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
+async def welcome_new_user(message: types.Message):
+    if message.chat.id in occupiedchats:
+
+        #db => kto zashel |vipolnitel|
+
+        pass
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)

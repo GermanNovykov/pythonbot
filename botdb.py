@@ -18,7 +18,7 @@ class DBclass:
             return list(result)
     def publishpost(self, post):
         with self.connection:
-            self.cursor.execute("INSERT INTO `post` (`user_id`, `active`, `completer`, `protection`, `theme`, `maintext`, `price`, `mediaid`, `docid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", (post.author, post.active, post.completer, post.protection, post.theme, post.maintext, post.price, post.mediaid, post.docid))
+            self.cursor.execute("INSERT INTO `post` (`user_id`, `active`, `completer`, `protection`, `theme`, `maintext`, `price`, `mediaid`, `docid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", (post.author, post.active, post.completer, post.protection, post.theme, post.maintext, post.price, post.mediaid, str(post.docid)))
             post_id = self.cursor.lastrowid
             return post_id
     def givepostalink(self, post_id, link):
@@ -37,6 +37,22 @@ class DBclass:
             result = self.cursor.execute('SELECT * FROM `post` WHERE `id` = ?;', (id,))
             return list(result)
 
+    def createchat(self, chat_id):
+        with self.connection:
+            self.cursor.execute('INSERT INTO `user` (`chat_id`) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM `chats` WHERE `chat_id` = ?)', (chat_id, chat_id))
+
+    def update_chat(self, chat_id, completer_id, user_id, post_id):
+        with self.connection:
+            self.cursor.execute("UPDATE chats SET completer_id = ?, user_id = ?, post_id = ? WHERE chat_id = ?;", (completer_id, user_id, post_id, chat_id))
+
+    def createcompleter(self, completer_id, name, activelist=[]):
+        with self.connection:
+            self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `activelist`) VALUES (?, ?, ?)", (completer_id, name, str(activelist)))
+    def getcompleter(self, completer_id):
+        with self.connection:
+            result = self.cursor.execute('SELECT * FROM `completer` WHERE `completer_id` = ?;', (completer_id,))
+            return list(result)
+
 class Post():
     def __init__(self, active, author, completer, protection, theme, maintext, price, mediaid, docid):
         # clientside ---
@@ -51,4 +67,4 @@ class Post():
         self.mediaid = mediaid
         self.docid = docid
     def tostring(self):
-        return f"🔵{self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'} \n {self.mediaid if self.mediaid else self.docid}"
+        return f"🔵{self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'} \n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"
