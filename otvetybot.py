@@ -26,7 +26,12 @@ dp = Dispatcher(bot, storage=storage)
 filebotid = -1001933035686
 # ID OF PUBLIC CHANNEL
 publicationbotid = -1001830791619
+# ID'S OF CHAT BOTS
+chatbotids = [-1001801606004, -1001605913621]
+occupiedchats = []
 # -------------------------
+
+
 
 class NewPost(StatesGroup):
     protection = State()
@@ -39,6 +44,9 @@ class NewPost(StatesGroup):
 class MyPosts(StatesGroup):
     choice = State()
     deleteorback = State()
+
+class TakePosts(StatesGroup):
+    approving = State()
 class MyMoney(StatesGroup):
     vibor = State()
     deleteorback = State()
@@ -52,16 +60,50 @@ async def command_start(message: types.Message, state: FSMContext):
     # I take post 1
     if payload:
         post = db.findpost(payload)[0]
-        author = db.finduserbyid(post[1])[0]
+        author = db.finduserbyid(post[1])[0] # only for name, to be deleted otherwise
         if message.from_user.id == post[1]:
-            print('Вы кликнули на свой же пост!')
+            await bot.send_message(message.chat.id, 'Вы кликнули на свой же пост!')
             # ------------------------
-            await message.answer("Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат")
-            await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание")
+            await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
+
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton('Подтвердить', callback_data='takeapprove')
+            item2 = types.InlineKeyboardButton('Отклонить', callback_data='takenot')
+            markup.add(item1, item2)
+
+            #might be faulty -----------------------
+            new_state = FSMContext(storage, post[1], post[1])
+            await new_state.set_state(TakePosts.approving)
+
+            data = await new_state.get_data()
+            data["completer"] = message.chat.id
+            data["thatlink"] = post[10]
+            await new_state.set_data(data)
+            # ------------------------------------
+            await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
 
         else:
-            # main shit
-            pass
+            await message.answer(
+                f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
+                parse_mode=types.ParseMode.HTML)
+
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton('Подтвердить', callback_data='takeapprove')
+            item2 = types.InlineKeyboardButton('Отклонить', callback_data='takenot')
+            markup.add(item1, item2)
+
+            # might be faulty -----------------------
+            new_state = FSMContext(storage, post[1], post[1])
+            await new_state.set_state(TakePosts.approving)
+
+            data = await new_state.get_data()
+            data["completer"] = message.chat.id
+            data["thatlink"] = post[10]
+            await new_state.set_data(data)
+            # ------------------------------------
+            await bot.send_message(post[1],
+                                   f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}",
+                                   reply_markup=markup, parse_mode=types.ParseMode.HTML)
     else:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
@@ -269,14 +311,16 @@ async def newpostpublish(message: types.Message, state: FSMContext):
             markup.add(item1)
 
             publishedmessage = await bot.send_message(publicationbotid, data["post"].tostring(), reply_markup=markup, parse_mode=types.ParseMode.HTML)
-
+            #linkhandle
+            linktopublished = publishedmessage.url
+            db.givepostalink(postid, linktopublished)
 
 
         #user
+
         markup2 = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup2.add('Новый пост', 'Мои посты', 'Мои деньги')
-        await bot.send_message(message.chat.id, "Пост опубликован на основном канале", reply_markup=markup2)
-        await bot.forward_message(message.chat.id, publishedmessage.chat.id, publishedmessage.message_id)
+        await bot.send_message(message.chat.id, f"Пост опубликован на основном канале {hide_link(linktopublished)}", reply_markup=markup2, parse_mode=types.ParseMode.HTML)
         await state.finish()
 
 # My posts2
@@ -319,6 +363,30 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
         else:
             await bot.send_message(call.message.chat.id, "У вас нету публикаций")
 # I take post 1
+@dp.callback_query_handler(lambda call: call.data in ['takeapprove', 'takenot'], state=TakePosts.approving)
+async def approvingproc(call: types.CallbackQuery, state: FSMContext):
+    if call.data == 'takeapprove':
+        #get link for chat
+        markup = types.InlineKeyboardMarkup()
+        freechat = chatbotids.pop()
+        occupiedchats.append(freechat)
+        #data
+        data = await state.get_data()
+        completer = data["completer"]
+        thatlink = data["thatlink"] #postlink
+        invitelink = await bot.create_chat_invite_link(freechat)
+
+        item1 = types.InlineKeyboardButton('Открыть чат', url=f"{invitelink.invite_link}")
+        markup.add(item1)
+        await bot.edit_message_text('***Вы приняли заявку***\n\nТеперь вы можете открыть чат', call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
+        await bot.send_message(completer, f"<b>Пользователь</b> принял вашу заявку {hide_link(thatlink)}", parse_mode=types.ParseMode.HTML, reply_markup=markup)
+
+    elif call.data == 'takenot':
+        data = await state.get_data()
+        completer = data["completer"]
+        thatlink = data["thatlink"]
+        await bot.edit_message_text('Вы отклонили заявку на выполнение работы.', call.message.chat.id, call.message.message_id)
+        await bot.send_message(completer, f"Пользователь отклонил вашу заявку на выполнение работы {hide_link(thatlink)}", parse_mode=types.ParseMode.HTML)
 
 
 if __name__ == '__main__':

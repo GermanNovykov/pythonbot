@@ -21,6 +21,10 @@ class DBclass:
             self.cursor.execute("INSERT INTO `post` (`user_id`, `active`, `completer`, `protection`, `theme`, `maintext`, `price`, `mediaid`, `docid`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);", (post.author, post.active, post.completer, post.protection, post.theme, post.maintext, post.price, post.mediaid, post.docid))
             post_id = self.cursor.lastrowid
             return post_id
+    def givepostalink(self, post_id, link):
+        with self.connection:
+            self.cursor.execute("UPDATE `post` SET `link` = ? WHERE `id` = ?;", (link, post_id))
+
     def findallposts(self, user_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `post` WHERE `user_id` = ?;', (user_id,))
