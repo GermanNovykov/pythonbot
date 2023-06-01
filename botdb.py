@@ -39,12 +39,14 @@ class DBclass:
 
     def createchat(self, chat_id):
         with self.connection:
-            self.cursor.execute('INSERT INTO `user` (`chat_id`) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM `chats` WHERE `chat_id` = ?)', (chat_id, chat_id))
-
+            self.cursor.execute('INSERT INTO `chats` (`chat_id`) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM `chats` WHERE `chat_id` = ?)', (chat_id, chat_id))
     def update_chat(self, chat_id, completer_id, user_id, post_id):
         with self.connection:
             self.cursor.execute("UPDATE chats SET completer_id = ?, user_id = ?, post_id = ? WHERE chat_id = ?;", (completer_id, user_id, post_id, chat_id))
-
+    def getchatdetails(self, chat_id):
+        with self.connection:
+            result = self.cursor.execute('SELECT * FROM `chats` WHERE `chat_id` = ?;', (chat_id,))
+            return list(result)
     def createcompleter(self, completer_id, name, activelist=[]):
         with self.connection:
             self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `activelist`) VALUES (?, ?, ?)", (completer_id, name, str(activelist)))

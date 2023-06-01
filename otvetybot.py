@@ -32,6 +32,8 @@ publicationbotid = -1001830791619
 # ID'S OF CHAT BOTS
 chatbotids = [-1001801606004, -1001605913621]
 occupiedchats = []
+for i in chatbotids:
+    db.createchat(i)
 # -------------------------
 
 
@@ -64,7 +66,7 @@ async def command_start(message: types.Message, state: FSMContext):
     if payload:
         post = db.findpost(payload)[0]
         if message.from_user.id == post[1]:
-            await bot.send_message(message.chat.id, 'Вы кликнули на свой же пост!')
+            await bot.send_message(message.from_user.id, 'Вы кликнули на свой же пост!')
             # ------------------------
 
             await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
@@ -103,12 +105,13 @@ async def command_start(message: types.Message, state: FSMContext):
                                    reply_markup=markup, parse_mode=types.ParseMode.HTML)
 
     else:
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add('Новый пост', 'Мои посты', 'Мои деньги')
-        db.makeuser(message.chat.id, message.from_user.full_name)
+        if message.chat.type == 'private':
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Новый пост', 'Мои посты', 'Мои деньги')
+            db.makeuser(message.from_user.id, message.from_user.full_name)
 
 
-        await message.answer(f'Здравствуйте, это бот паблика «TurtleUA», выберите одно действие из меню.', reply_markup=markup)
+            await message.answer(f'Здравствуйте, это бот паблика «TurtleUA», выберите одно действие из меню.', reply_markup=markup)
 #start2
 @dp.message_handler(lambda message: message.text in ['Новый пост', 'Мои посты', 'Мои деньги'], state='*')
 async def starthandlertwo(message: types.Message, state: FSMContext):
@@ -415,9 +418,10 @@ async def approvingproc(call: types.CallbackQuery, state: FSMContext):
 
         post = db.findpost(postid)[0]
         postlink = post[10]
-        #datafinish
 
-        # write data to chat db
+        #db chat update
+        db.update_chat(freechat, completer, call.from_user.id, post[0])
+        #datafinish
 
         invitelink = await bot.create_chat_invite_link(freechat)
 
@@ -444,10 +448,34 @@ async def approvingproc(call: types.CallbackQuery, state: FSMContext):
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
 async def welcome_new_user(message: types.Message):
     if message.chat.id in occupiedchats:
+        chatdetails = db.getchatdetails(message.chat.id)[0]
+        post = db.findpost(chatdetails[4])
+        completer = chatdetails[2]
+        user = chatdetails[3]
 
-        #db => kto zashel |vipolnitel|
+        completer_member = await message.chat.get_member(completer)
+        user_member = await message.chat.get_member(user)
 
-        pass
+        if types.ChatMember.is_chat_member(completer_member) and types.ChatMember.is_chat_member(user_member):
+
+            
+
+            await message.reply("Hi guys!")
+        elif types.ChatMember.is_chat_member(completer_member):
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton('Позвать собеседника', callback_data='pozvat')
+            markup.add(item1)
+
+            await bot.send_message(message.chat.id, "Выполнитель зашёл первым", reply_markup=markup)
+        elif types.ChatMember.is_chat_member(user_member):
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton('Позвать собеседника', callback_data='pozvat')
+            markup.add(item1)
+
+            await bot.send_message(message.chat.id, "Заказчик работы зашёл первым", reply_markup=markup)
+        else:
+            # If the incoming user is not allowed, remove them from the chat
+            await message.chat.kick(message.from_user.id)
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
