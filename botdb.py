@@ -23,7 +23,7 @@ class DBclass:
             return post_id
     def givepostalink(self, post_id, link):
         with self.connection:
-            self.cursor.execute("UPDATE `post` SET `link` = ? WHERE `id` = ?;", (link, post_id))
+            self.cursor.execute("UPDATE `post` SET `link` = ? WHERE `id` = ?;", (link, post_id,))
 
     def findallposts(self, user_id):
         with self.connection:
@@ -39,20 +39,31 @@ class DBclass:
 
     def createchat(self, chat_id):
         with self.connection:
-            self.cursor.execute('INSERT INTO `chats` (`chat_id`) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM `chats` WHERE `chat_id` = ?)', (chat_id, chat_id))
+            self.cursor.execute('INSERT INTO `chats` (`chat_id`) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM `chats` WHERE `chat_id` = ?)', (chat_id, chat_id,))
     def update_chat(self, chat_id, completer_id, user_id, post_id):
         with self.connection:
-            self.cursor.execute("UPDATE chats SET completer_id = ?, user_id = ?, post_id = ? WHERE chat_id = ?;", (completer_id, user_id, post_id, chat_id))
+            self.cursor.execute("UPDATE chats SET completer_id = ?, user_id = ?, post_id = ? WHERE chat_id = ?;", (completer_id, user_id, post_id, chat_id,))
     def update_chat_links(self, chat_id, userinvite, completerinvite):
         with self.connection:
-            self.cursor.execute("UPDATE chats SET userinvite = ?, completerinvite = ? WHERE chat_id = ?;", (userinvite, completerinvite, chat_id))
+            self.cursor.execute("UPDATE chats SET userinvite = ?, completerinvite = ? WHERE chat_id = ?;", (userinvite, completerinvite, chat_id,))
     def find_chat_byid(self, user_id):
         with self.connection:
-            result = self.cursor.execute('SELECT * FROM `chats` WHERE `completer_id` = ? OR `user_id` = ?;', (user_id, user_id))
+            result = self.cursor.execute('SELECT * FROM `chats` WHERE `completer_id` = ? OR `user_id` = ?;', (user_id, user_id,))
+            return list(result)
+    def chat_byid(self, chatid):
+        with self.connection:
+            result = self.cursor.execute("SELECT * FROM `chats` WHERE `chat_id` = ?;", (chatid,))
+            return list(result)
+    def postidchat(self, postid):
+        with self.connection:
+            result = self.cursor.execute("SELECT * FROM `chats` WHERE `post_id` = ?;", (postid,))
             return list(result)
     def clear_chat(self, chat_id):
         with self.connection:
-            self.cursor.execute("UPDATE chats SET completer_id = NULL, user_id = NULL, post_id = NULL, userinvite = NULL, completerinvite = NULL WHERE chat_id = ?;", (chat_id))
+            self.cursor.execute("UPDATE chats SET completer_id = NULL, user_id = NULL, post_id = NULL, userinvite = NULL, completerinvite = NULL WHERE chat_id = ?;", (chat_id,))
+    def clearpostchatid(self, id):
+        with self.connection:
+            self.cursor.execute("UPDATE post SET `chat` = NULL WHERE `id` = ?;", (id,))
 
     def getchatdetails(self, chat_id):
         with self.connection:
@@ -62,7 +73,9 @@ class DBclass:
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `chats` WHERE `post_id` IS NOT NULL;')
             return list(result)
-
+    def add_chat_to_post(self, postid, chatid):
+        with self.connection:
+            self.cursor.execute('UPDATE `post` SET `chat` = ? WHERE `id` = ?', (chatid, postid,))
     def createcompleter(self, completer_id, name, activelist=[]):
         with self.connection:
             self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `activelist`) VALUES (?, ?, ?)", (completer_id, name, str(activelist)))
