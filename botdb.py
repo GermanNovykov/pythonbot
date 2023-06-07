@@ -98,4 +98,5 @@ class Post():
         self.mediaid = mediaid
         self.docid = docid
     def tostring(self):
-        return f"🔵{self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'} \n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"
+
+        return f"{'🔵 ' + self.active if self.protection == 'protected' else '🔴 ' + self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'} \n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"

@@ -7,7 +7,7 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text, MediaGroupFilter
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ParseMode
+from aiogram.types import KeyboardButton
 from aiogram.utils.deep_linking import get_start_link
 from aiogram.utils import executor
 from aiogram.utils.markdown import hide_link
@@ -48,7 +48,10 @@ class NewPost(StatesGroup):
     price = State()
     filehandle = State()
     publish = State()
-
+class BecomeCompleter(StatesGroup):
+    name = State()
+    email = State()
+    phone = State()
 class MyPosts(StatesGroup):
     choice = State()
     deleteorback = State()
@@ -96,9 +99,8 @@ async def command_start(message: types.Message, state: FSMContext):
                 await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
 
         else:
-            if db.postidchat(post[0]):
-                if db.postidchat(post[0])[0][2] == message.chat.id:
-                    await message.answer("Вы не можете отправить больше одной заявки на один пост")
+            if db.postidchat(post[0]) and db.postidchat(post[0])[0][2] == message.chat.id:
+                await message.answer("Вы не можете отправить больше одной заявки на один пост")
             else:
                 await message.answer(
                     f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
@@ -196,6 +198,15 @@ async def starthandlertwo(message: types.Message, state: FSMContext):
                 await bot.send_message(message.from_user.id, 'Выберите один чат', reply_markup=markup)
             else:
                 await message.answer("Вас нету ни в одном чате")
+        #becomecomp 1
+        elif message.text == "Стать выполнителем":
+
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add('Отменить')
+
+            await bot.send_message(message.chat.id, "***Введите свое настоящее имя***\n\nЧтобы отменить, нажмите ***Отменить***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
+            await BecomeCompleter.name.set()
+
 # New Post 2
 @dp.callback_query_handler(lambda call: call.data in ['protected', 'ordinary'], state=NewPost.protection)
 async def newpostprotection(callbackQuery: types.CallbackQuery, state: FSMContext):
@@ -491,7 +502,7 @@ async def approvingproc(call: types.CallbackQuery, state: FSMContext):
             occupiedchats.append(freechat)
 
 
-            invitelink = await bot.create_chat_invite_link(freechat)
+            invitelink = await bot.create_chat_invite_link(freechat, expire_date=999999999999999)
             # db chat update
             db.update_chat(freechat, completer, call.from_user.id, post[0])
             item1 = types.InlineKeyboardButton('Открыть чат', url=f"{invitelink.invite_link}")
@@ -610,11 +621,26 @@ async def admindelete(call: types.CallbackQuery, state: FSMContext):
     postid = decoded_data["postid"][0]
 
     post = db.findpost(postid)[0]
+
+    if post[11]:
+        chat = db.chat_byid(post[11])[0]
+        occupiedchats.remove(post[11])
+        chatbotids.append(post[11])
+
+
+        await bot.unpin_all_chat_messages(post[11])
+
+        if chat[2] != superuserid:
+            await bot.kick_chat_member(post[11], chat[2])
+        if chat[3] != superuserid:
+            await bot.kick_chat_member(post[11], chat[3])
+
     db.deletepost(post[0])
     message_id = re.search(r'/(\d+)$', post[10]).group(1)
     await bot.delete_message(publicationbotid, message_id)
     await bot.delete_message(call.message.chat.id, call.message.message_id)
     await bot.send_message(userid, "Админ удалил один из ваших постов")
+
 
 #superuser3
 @dp.callback_query_handler(lambda call: call.data.startswith('calladminchat'))
@@ -625,7 +651,7 @@ async def admincall(call: types.CallbackQuery, state: FSMContext):
     chatid = decoded_data["chatid"][0]
     chat = db.chat_byid(call.message.chat.id)[0]
     post = db.findpost(chat[4])[0]
-    invitelink = await bot.create_chat_invite_link(post[11])
+    invitelink = await bot.create_chat_invite_link(post[11], expire_date=99999999999999999)
 
     markup = types.InlineKeyboardMarkup()
     item1 = types.InlineKeyboardButton('Войти', url=f"{invitelink.invite_link}")
@@ -659,9 +685,13 @@ async def canceldealack(message: types.Message, state: FSMContext):
         chatbotids.append(message.chat.id)
         db.clear_chat(message.chat.id)
 
+        await bot.delete_message(chat_id=chat[2], message_id=chat[6])
+        await bot.delete_message(chat_id=chat[3], message_id=chat[5])
+
         await message.answer("Сделка отменена")
         await state.finish()
         await bot.unpin_all_chat_messages(message.chat.id)
+
         if chat[2] != superuserid:
             await bot.kick_chat_member(message.chat.id, chat[2])
         if chat[3] != superuserid:
@@ -670,5 +700,62 @@ async def canceldealack(message: types.Message, state: FSMContext):
         await message.answer("Сделка не отменена")
         await state.finish()
 
+#becomecomp 2
+@dp.message_handler(state=BecomeCompleter.name)
+async def becomecompone(message: types.Message, state: FSMContext):
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add('Новый пост')
+        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+    else:
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Отменить')
+
+        async with state.proxy() as data:
+            data["name"] = message.text
+
+        await message.answer("Введите почту", reply_markup=markup)
+        await BecomeCompleter.next()
+#becomecomp 2
+@dp.message_handler(state=BecomeCompleter.email)
+async def becomecomponeemail(message: types.Message, state: FSMContext):
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add('Новый пост')
+        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+    else:
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Отменить')
+
+        async with state.proxy() as data:
+            data["email"] = message.text
+
+        await message.answer("Введите дату рождения", reply_markup=markup)
+        await BecomeCompleter.next()
+@dp.message_handler(state=BecomeCompleter.phone)
+async def becomecomponephone(message: types.Message, state: FSMContext):
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add('Новый пост')
+        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+    else:
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        button = KeyboardButton(text="Поделится номером телефона", request_contact=True)
+        markup.add('Отменить', button)
+
+        async with state.proxy() as data:
+            data["email"] = message.text
+
+        await bot.send_message(message.from_user.id, "***Введите номер телефона***\n\nНажмите кнопку ***Поделится номером телефона***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
+        await BecomeCompleter.next()
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
