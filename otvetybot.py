@@ -51,6 +51,7 @@ class NewPost(StatesGroup):
 class BecomeCompleter(StatesGroup):
     name = State()
     email = State()
+    date = State()
     phone = State()
 class MyPosts(StatesGroup):
     choice = State()
@@ -738,7 +739,7 @@ async def becomecomponeemail(message: types.Message, state: FSMContext):
 
         await message.answer("Введите дату рождения", reply_markup=markup)
         await BecomeCompleter.next()
-@dp.message_handler(state=BecomeCompleter.phone)
+@dp.message_handler(state=BecomeCompleter.date)
 async def becomecomponephone(message: types.Message, state: FSMContext):
     if message.text == "Отменить":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -756,6 +757,25 @@ async def becomecomponephone(message: types.Message, state: FSMContext):
             data["email"] = message.text
 
         await bot.send_message(message.from_user.id, "***Введите номер телефона***\n\nНажмите кнопку ***Поделится номером телефона***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
+        await BecomeCompleter.next()
+
+@dp.message_handler(content_types=[types.ContentType.CONTACT, 'text'], state=BecomeCompleter.phone)
+async def handle_contact(message: types.Message, state: FSMContext):
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add('Новый пост')
+        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+    else:
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add('Подтвердить', 'Отменить')
+
+        async with state.proxy() as data:
+            data["email"] = message.text
+
+        await bot.send_message(message.from_user.id, "Чтобы оставить заявку, нажмите ***Подтверить***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
         await BecomeCompleter.next()
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
