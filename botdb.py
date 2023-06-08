@@ -76,14 +76,16 @@ class DBclass:
     def add_chat_to_post(self, postid, chatid):
         with self.connection:
             self.cursor.execute('UPDATE `post` SET `chat` = ? WHERE `id` = ?', (chatid, postid,))
-    def createcompleter(self, completer_id, name, activelist=[]):
+    def createcompleter(self, completer_id, name, email, date, phone, isactive, bal):
         with self.connection:
-            self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `activelist`) VALUES (?, ?, ?)", (completer_id, name, str(activelist)))
+            self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `email`, `date`, `phone`, `isactive`, `balance`) VALUES (?, ?, ?, ?, ?, ?, ?)", (completer_id, name, email, date, phone, isactive, bal))
     def getcompleter(self, completer_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `completer` WHERE `completer_id` = ?;', (completer_id,))
             return list(result)
-
+    def updatecompleterstatus(self, completer_id, isactive):
+        with self.connection:
+            self.cursor.execute("UPDATE `completer` SET `isactive` = ? WHERE `completer_id` = ?", (isactive, completer_id,))
 class Post():
     def __init__(self, active, author, completer, protection, theme, maintext, price, mediaid, docid):
         # clientside ---
@@ -99,4 +101,4 @@ class Post():
         self.docid = docid
     def tostring(self):
 
-        return f"{'🔵 ' + self.active if self.protection == 'protected' else '🔴 ' + self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'} \n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"
+        return f"{'🔵 ' + self.active if self.protection == 'protected' else '🔴 ' + self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'}\n{'<b>Защищённый пост</b>' if self.protection == 'protected' else ''}\n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"

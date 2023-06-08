@@ -1,6 +1,6 @@
 import re
 import urllib.parse
-
+from datetime import datetime, timedelta
 import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -11,7 +11,6 @@ from aiogram.types import KeyboardButton
 from aiogram.utils.deep_linking import get_start_link
 from aiogram.utils import executor
 from aiogram.utils.markdown import hide_link
-import datetime
 from aiogram.utils.deep_linking import decode_payload
 from aiogram_media_group import media_group_handler
 from typing import List
@@ -53,6 +52,7 @@ class BecomeCompleter(StatesGroup):
     email = State()
     date = State()
     phone = State()
+    ack = State()
 class MyPosts(StatesGroup):
     choice = State()
     deleteorback = State()
@@ -77,51 +77,59 @@ async def command_start(message: types.Message, state: FSMContext):
     # I take post 1 ------------------------------------------------------------------------------
     if payload:
         post = db.findpost(payload)[0]
-        if message.from_user.id == post[1]:
-            await bot.send_message(message.from_user.id, 'Вы кликнули на свой же пост!')
-            # ------------------------
-            if db.postidchat(post[0]):
-                if db.postidchat(post[0])[0][2] == message.chat.id:
-                    await message.answer("Вы не можете отправить больше одной заявки на один пост")
+        if db.getcompleter(message.from_user.id):
+            if db.getcompleter(message.from_user.id)[0][6] == 'yes':
+                if message.from_user.id == post[1]:
+                    await bot.send_message(message.from_user.id, 'Вы кликнули на свой же пост!')
+                    # ------------------------
+                    if db.postidchat(post[0]):
+                        if db.postidchat(post[0])[0][2] == message.chat.id:
+                            await message.answer("Вы не можете отправить больше одной заявки на один пост")
+                    else:
+                        await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
+
+                        # data-----------------------------
+                        encoded_data = urllib.parse.urlencode({
+                            "completer": message.from_user.id,
+                            "postid": post[0]
+                        })
+
+                        markup = types.InlineKeyboardMarkup()
+                        item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
+                        item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
+                        markup.add(item1, item2)
+
+                        await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
+
+                else:
+                    if db.postidchat(post[0]) and db.postidchat(post[0])[0][2] == message.chat.id:
+                        await message.answer("Вы не можете отправить больше одной заявки на один пост")
+                    else:
+                        await message.answer(
+                            f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
+                            parse_mode=types.ParseMode.HTML)
+
+                        # data-----------------------------
+                        encoded_data = urllib.parse.urlencode({
+                            "completer": message.from_user.id,
+                            "postid": post[0]
+                        })
+
+                        markup = types.InlineKeyboardMarkup()
+                        item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
+                        item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
+                        markup.add(item1, item2)
+
+                        await bot.send_message(post[1],
+                                               f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}",
+                                               reply_markup=markup, parse_mode=types.ParseMode.HTML)
             else:
-                await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
-
-                # data-----------------------------
-                encoded_data = urllib.parse.urlencode({
-                    "completer": message.from_user.id,
-                    "postid": post[0]
-                })
-
-                markup = types.InlineKeyboardMarkup()
-                item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
-                item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
-                markup.add(item1, item2)
-
-                await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
-
+                await message.answer("Вы не можете брать посты, потому что администратор не рассмотрел вашей заявки или отклонил её")
         else:
-            if db.postidchat(post[0]) and db.postidchat(post[0])[0][2] == message.chat.id:
-                await message.answer("Вы не можете отправить больше одной заявки на один пост")
-            else:
-                await message.answer(
-                    f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
-                    parse_mode=types.ParseMode.HTML)
-
-                # data-----------------------------
-                encoded_data = urllib.parse.urlencode({
-                    "completer": message.from_user.id,
-                    "postid": post[0]
-                })
-
-                markup = types.InlineKeyboardMarkup()
-                item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
-                item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
-                markup.add(item1, item2)
-
-                await bot.send_message(post[1],
-                                       f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}",
-                                       reply_markup=markup, parse_mode=types.ParseMode.HTML)
-
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            markup.add('Новый пост')
+            markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+            await message.answer("Чтобы брать посты, сначала нужно стать выполнителем\n\nНажмите «Стать выполнителем» для того чтобы оставить заявку", reply_markup=markup)
 
     else:
         if message.chat.type == 'private':
@@ -199,15 +207,25 @@ async def starthandlertwo(message: types.Message, state: FSMContext):
                 await bot.send_message(message.from_user.id, 'Выберите один чат', reply_markup=markup)
             else:
                 await message.answer("Вас нету ни в одном чате")
+# -----------------------
         #becomecomp 1
         elif message.text == "Стать выполнителем":
+            if not db.getcompleter(message.from_user.id):
+                markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                markup.add('Отменить')
 
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add('Отменить')
-
-            await bot.send_message(message.chat.id, "***Введите свое настоящее имя***\n\nЧтобы отменить, нажмите ***Отменить***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
-            await BecomeCompleter.name.set()
-
+                await bot.send_message(message.chat.id, "***Введите свое настоящее имя***\n\nЧтобы отменить, нажмите ***Отменить***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
+                await BecomeCompleter.name.set()
+            else:
+                await message.answer('Вы уже отправили заявку!')
+# ---------------------------
+        # my bal 1
+        elif message.text == 'Мои деньги':
+            if db.getcompleter(message.from_user.id):
+                completer = db.getcompleter(message.from_user.id)[0]
+                await message.answer(f'На вашем балансе {completer[7]} грн')
+            else:
+                await message.answer('У вас нету средств')
 # New Post 2
 @dp.callback_query_handler(lambda call: call.data in ['protected', 'ordinary'], state=NewPost.protection)
 async def newpostprotection(callbackQuery: types.CallbackQuery, state: FSMContext):
@@ -268,34 +286,76 @@ async def newpostprice(message: types.Message, state: FSMContext):
         await state.finish()
         await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
     else:
-        if message.text == "Договорная":
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add('Готово', 'Отменить')
-            # DATA
-            async with state.proxy() as data:
-                data["price"] = message.text
-                data["mediaid"] = []
-                data["docid"] = []
-            await bot.send_message(message.from_user.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
-            await NewPost.next()
+        async with state.proxy() as data:
+            if data["protection"] == 'protected':
+                if message.text == "Договорная":
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    markup.add('Готово', 'Отменить')
+                    # DATA
 
-        elif message.text.isnumeric():
+                    data["price"] = message.text
+                    data["mediaid"] = []
+                    data["docid"] = []
+                    await bot.send_message(message.from_user.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
+                    await NewPost.next()
 
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add('Готово', 'Отменить')
+                elif message.text.isnumeric():
 
-            # DATA
-            async with state.proxy() as data:
-                data["price"] = message.text
-                data["mediaid"] = []
-                data["docid"] = []
-            await bot.send_message(message.from_user.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
-            await NewPost.next()
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    markup.add('Готово', 'Отменить')
 
-        else:
-            await bot.send_message(message.from_user.id, f"Ошибка в указании цены, правильно указать цену без текста\nНапример, чтобы указать цену в 100 грн, введите «100»")
+                    # DATA
 
+                    data["price"] = message.text
+                    data["mediaid"] = []
+                    data["docid"] = []
+                    await bot.send_message(message.from_user.id, f"Теперь добавьте файл или фото, ассоциированый с заданием, затем нажмите «Готово»", reply_markup=markup)
+                    await NewPost.next()
 
+                else:
+                    await bot.send_message(message.from_user.id, f"Ошибка в указании цены, правильно указать цену без текста\nНапример, чтобы указать цену в 100 грн, введите «100»")
+            else:
+
+                if message.text == "Договорная":
+                    data["price"] = message.text
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    markup.add('Опубликовать', 'Отменить')
+
+                    #preview ORDINARY
+                    post = Post(active="Активный", author=message.from_user.id, completer="Нету",
+                                theme=data["theme"], maintext=data["maintext"], price=data["price"],
+                                mediaid='', docid='', protection=data["protection"])
+                    data["post"] = post
+
+                    # send
+                    await bot.send_message(message.from_user.id,
+                                           "Перед тем как опубликовать, если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите <b>Опубликовать</b>",
+                                           reply_markup=markup, parse_mode=types.ParseMode.HTML)
+                    await bot.send_message(message.from_user.id, f"<b>ПРЕВЬЮ ПОСТА</b>\n{post.tostring()}",
+                                           parse_mode=types.ParseMode.HTML)
+                    await NewPost.next()
+                    await NewPost.next()
+                elif message.text.isnumeric():
+                    data["price"] = message.text
+                    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                    markup.add('Опубликовать', 'Отменить')
+
+                    # preview ORDINARY
+                    post = Post(active="Активный", author=message.from_user.id, completer="Нету",
+                                theme=data["theme"], maintext=data["maintext"], price=data["price"],
+                                mediaid='', docid='', protection=data["protection"])
+                    data["post"] = post
+
+                    # send
+                    await bot.send_message(message.from_user.id,
+                                           "Перед тем как опубликовать, если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите <b>Опубликовать</b>",
+                                           reply_markup=markup, parse_mode=types.ParseMode.HTML)
+                    await bot.send_message(message.from_user.id, f"<b>ПРЕВЬЮ ПОСТА</b>\n{post.tostring()}",
+                                           parse_mode=types.ParseMode.HTML)
+                    await NewPost.next()
+                    await NewPost.next()
+                else:
+                    await bot.send_message(message.from_user.id, f"Ошибка в указании цены, правильно указать цену без текста\nНапример, чтобы указать цену в 100 грн, введите «100»")
 
 # New post 6 one doc one photo
 @dp.message_handler(MediaGroupFilter(is_media_group=False), content_types=['photo', 'document'], state=NewPost.filehandle)
@@ -344,21 +404,21 @@ async def album_handler(messages: List[types.Message], state: FSMContext):
 # New post 7 If user chooses, he could edit the post
 @dp.message_handler(state=NewPost.filehandle)
 async def newpostfilegotovo(message: types.Message, state: FSMContext):
-    # cancel
-    if message.text == "Отменить":
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-        markup.add('Новый пост')
-        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
-        await state.finish()
-        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
-    else:
-        if message.text == "Готово":
-            media = types.MediaGroup()
-            docs = []
+    async with state.proxy() as data:
+
+        # cancel
+        if message.text == "Отменить":
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            markup.add('Новый пост')
+            markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+            await state.finish()
+            await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+        else:
+            if message.text == "Готово":
+                media = types.MediaGroup()
+                docs = []
 
 
-
-            async with state.proxy() as data:
                 data["doclink"] = []
                 for i in data["mediaid"]:
                     media.attach_photo(photo=i)
@@ -366,30 +426,31 @@ async def newpostfilegotovo(message: types.Message, state: FSMContext):
                     filemessagedoc = await bot.send_document(filebotid, j)
                     docs.append(hide_link(filemessagedoc.url))
                     data["doclink"].append(hide_link(filemessagedoc.url))
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add('Опубликовать', 'Отменить')
+                markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+                markup.add('Опубликовать', 'Отменить')
 
-            async with state.proxy() as data:
+
                 data["medialink"] = ""
 
-                #media
+                    #media
                 if len(data["mediaid"])>0:
                     filemessagephoto = await bot.send_media_group(filebotid, media)
                     data["medialink"] = hide_link(filemessagephoto[0].url)
-                #post
+                    #post
                 post = Post(active="Активный", author=message.from_user.id, completer="Нету",
-                            theme=data["theme"], maintext=data["maintext"], price=data["price"], mediaid=data["medialink"], docid=data["doclink"], protection=data["protection"])
+                                theme=data["theme"], maintext=data["maintext"], price=data["price"], mediaid=data["medialink"], docid=data["doclink"], protection=data["protection"])
                 data["post"] = post
-            #message
+                #message
 
-            #send
-            await bot.send_message(message.from_user.id, "Перед тем как опубликовать, если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите <b>Опубликовать</b>", reply_markup=markup, parse_mode=types.ParseMode.HTML)
-            await bot.send_message(message.from_user.id, f"<b>ПРЕВЬЮ ПОСТА</b>\n{post.tostring()}", parse_mode=types.ParseMode.HTML)
-            await NewPost.next()
+                #send
+                await bot.send_message(message.from_user.id, "Перед тем как опубликовать, если вы хотите изменить что-либо, просто измените сообщения которые вы отправили ранее. Затем, нажмите <b>Опубликовать</b>", reply_markup=markup, parse_mode=types.ParseMode.HTML)
+                await bot.send_message(message.from_user.id, f"<b>ПРЕВЬЮ ПОСТА</b>\n{post.tostring()}", parse_mode=types.ParseMode.HTML)
+                await NewPost.next()
 
 # New post 8 Final, publish to main channel
 @dp.message_handler(state=NewPost.publish)
 async def newpostpublish(message: types.Message, state: FSMContext):
+
     # cancel
     if message.text == "Отменить":
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -406,11 +467,13 @@ async def newpostpublish(message: types.Message, state: FSMContext):
                 postid = db.publishpost(data["post"])
 
                 link = await get_start_link(str(postid), encode=True)
+                if data["protection"] == "protected":
+                    item1 = types.InlineKeyboardButton('Беру', url=link)
+                    markup.add(item1)
+                    publishedmessage = await bot.send_message(publicationbotid, data['post'].tostring(), reply_markup=markup, parse_mode=types.ParseMode.HTML)
 
-                item1 = types.InlineKeyboardButton('Беру', url=link)
-                markup.add(item1)
-
-                publishedmessage = await bot.send_message(publicationbotid, data["post"].tostring(), reply_markup=markup, parse_mode=types.ParseMode.HTML)
+                else:
+                    publishedmessage = await bot.send_message(publicationbotid, f"{data['post'].tostring()}\nКонтакт: <a href='https://telegram.me/{message.from_user.username}'>{message.from_user.first_name}</a>", reply_markup=markup, parse_mode=types.ParseMode.HTML, disable_web_page_preview=True)
 
                 #superuser
                 encoded_data = urllib.parse.urlencode({
@@ -502,8 +565,8 @@ async def approvingproc(call: types.CallbackQuery, state: FSMContext):
             freechat = chatbotids.pop()
             occupiedchats.append(freechat)
 
-
-            invitelink = await bot.create_chat_invite_link(freechat, expire_date=999999999999999)
+            future_date = datetime.now() + timedelta(days=365 * 5)
+            invitelink = await bot.create_chat_invite_link(freechat, expire_date=future_date)
             # db chat update
             db.update_chat(freechat, completer, call.from_user.id, post[0])
             item1 = types.InlineKeyboardButton('Открыть чат', url=f"{invitelink.invite_link}")
@@ -563,14 +626,14 @@ async def welcome_new_user(message: types.Message):
             item1 = types.InlineKeyboardButton('Позвать собеседника', callback_data=f'pozvatklienta{user}')
             markup.add(item1)
 
-            await bot.send_message(message.chat.id, "Выполнитель зашёл первым", reply_markup=markup)
+            await bot.send_message(message.chat.id, "Другой участник сделки еще не присоединился", reply_markup=markup)
         elif types.ChatMember.is_chat_member(user_member):
 
             markup = types.InlineKeyboardMarkup()
             item1 = types.InlineKeyboardButton('Позвать собеседника', callback_data=f'pozvatcompleter{completer}')
             markup.add(item1)
 
-            await bot.send_message(message.chat.id, "Заказчик работы зашёл первым", reply_markup=markup)
+            await bot.send_message(message.chat.id, "Другой участник сделки еще не присоединился", reply_markup=markup)
 
         else:
             if not message.from_user.id == superuserid:
@@ -640,7 +703,7 @@ async def admindelete(call: types.CallbackQuery, state: FSMContext):
     message_id = re.search(r'/(\d+)$', post[10]).group(1)
     await bot.delete_message(publicationbotid, message_id)
     await bot.delete_message(call.message.chat.id, call.message.message_id)
-    await bot.send_message(userid, "Админ удалил один из ваших постов")
+    await bot.send_message(userid, "Администратор удалил один из ваших постов")
 
 
 #superuser3
@@ -652,7 +715,7 @@ async def admincall(call: types.CallbackQuery, state: FSMContext):
     chatid = decoded_data["chatid"][0]
     chat = db.chat_byid(call.message.chat.id)[0]
     post = db.findpost(chat[4])[0]
-    invitelink = await bot.create_chat_invite_link(post[11], expire_date=99999999999999999)
+    invitelink = await bot.create_chat_invite_link(post[11])
 
     markup = types.InlineKeyboardMarkup()
     item1 = types.InlineKeyboardButton('Войти', url=f"{invitelink.invite_link}")
@@ -739,6 +802,7 @@ async def becomecomponeemail(message: types.Message, state: FSMContext):
 
         await message.answer("Введите дату рождения", reply_markup=markup)
         await BecomeCompleter.next()
+#becomecomp 3
 @dp.message_handler(state=BecomeCompleter.date)
 async def becomecomponephone(message: types.Message, state: FSMContext):
     if message.text == "Отменить":
@@ -754,11 +818,11 @@ async def becomecomponephone(message: types.Message, state: FSMContext):
         markup.add('Отменить', button)
 
         async with state.proxy() as data:
-            data["email"] = message.text
+            data["date"] = message.text
 
         await bot.send_message(message.from_user.id, "***Введите номер телефона***\n\nНажмите кнопку ***Поделится номером телефона***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
         await BecomeCompleter.next()
-
+#becomecomp 4
 @dp.message_handler(content_types=[types.ContentType.CONTACT, 'text'], state=BecomeCompleter.phone)
 async def handle_contact(message: types.Message, state: FSMContext):
     if message.text == "Отменить":
@@ -772,10 +836,70 @@ async def handle_contact(message: types.Message, state: FSMContext):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add('Подтвердить', 'Отменить')
 
-        async with state.proxy() as data:
-            data["email"] = message.text
+        if type(message.contact) == types.contact.Contact:
+            async with state.proxy() as data:
+                data["phone"] = message.contact.phone_number
+        else:
+            async with state.proxy() as data:
+                data["phone"] = message.text
+
 
         await bot.send_message(message.from_user.id, "Чтобы оставить заявку, нажмите ***Подтверить***", reply_markup=markup, parse_mode=types.ParseMode.MARKDOWN_V2)
         await BecomeCompleter.next()
+#becomecomp 5 final
+@dp.message_handler(state=BecomeCompleter.ack)
+async def becomecomponephone(message: types.Message, state: FSMContext):
+    if message.text == "Отменить":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        markup.add('Новый пост')
+        markup.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+        await state.finish()
+        await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
+    else:
+        async with state.proxy() as data:
+            db.createcompleter(message.from_user.id, data["name"], data["email"], data["date"], data["phone"], "no", 0)
+            #send to superuser
+
+            encoded_data = urllib.parse.urlencode({
+                "completer": message.chat.id
+            })
+
+            url = f"https://telegram.me/{message.from_user.username}"
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton("Подтвердить", callback_data=f"compstatusaccept{encoded_data}")
+            item2 = types.InlineKeyboardButton("Отклонить", callback_data=f"compstatusreject{encoded_data}")
+            markup.add(item1, item2)
+
+            markup2 = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            markup2.add('Новый пост')
+            markup2.add('Стать выполнителем', 'Мои чаты', 'Мои посты', 'Мои деньги')
+
+            await bot.send_message(superuserid, f"Заявка от <a href='{url}'>{message.from_user.first_name}</a>\n\nДанные\n<b>Настоящее имя: </b>{data['name']}\n<b>Почта: </b>{data['email']}\n<b>Дата рождения: </b>{data['date']}\n<b>Номер телефона: </b>{data['phone']}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
+        await bot.send_message(message.from_user.id,
+                               "Ваша заявка принята и будет рассмотрена администратором. После этого вы сможете выполнять публикации клиентов", reply_markup=markup2)
+        await state.finish()
+#superuserapprovecomp
+@dp.callback_query_handler(lambda call: call.data.startswith('compstatusaccept') or call.data.startswith('compstatusreject'))
+async def admincall(call: types.CallbackQuery, state: FSMContext):
+
+    if call.data.startswith('compstatusaccept'):
+        encodeddata = call.data[16:]
+        decoded_data = urllib.parse.parse_qs(encodeddata)
+
+        completer = decoded_data["completer"][0]
+        db.updatecompleterstatus(completer, 'yes')
+
+        await bot.edit_message_text("Заявка принята", call.message.chat.id, call.message.message_id)
+        await bot.send_message(completer, "Администратор принял вашу заявку. Теперь вы можете выполнять публикации клиентов")
+
+    elif call.data.startswith('compstatusreject'):
+        encodeddata = call.data[16:]
+        decoded_data = urllib.parse.parse_qs(encodeddata)
+
+        completer = decoded_data["completer"][0]
+
+        await bot.edit_message_text("Заявка отклонена", call.message.chat.id, call.message.message_id)
+        await bot.send_message(completer, "Администратор отклонил вашу заявку")
+
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
