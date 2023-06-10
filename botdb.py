@@ -64,14 +64,24 @@ class DBclass:
     def clearpostchatid(self, id):
         with self.connection:
             self.cursor.execute("UPDATE post SET `chat` = NULL WHERE `id` = ?;", (id,))
-
+    def updateprice(self, postid, price):
+        with self.connection:
+            self.cursor.execute("UPDATE post SET price = ? WHERE id = ?;", (price, postid,))
     def getchatdetails(self, chat_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `chats` WHERE `chat_id` = ?;', (chat_id,))
             return list(result)
     def getalloccupiedchats(self):
         with self.connection:
-            result = self.cursor.execute('SELECT * FROM `chats` WHERE `post_id` IS NOT NULL;')
+            result = self.cursor.execute('SELECT chat_id FROM `chats` WHERE `post_id` IS NOT NULL;')
+            return list(result)
+    def getallchats(self):
+        with self.connection:
+            result = self.cursor.execute('SELECT `chat_id` FROM `chats` WHERE `chat_id` IS NOT NULL;')
+            return list(result)
+    def getfreechat(self):
+        with self.connection:
+            result = self.cursor.execute('SELECT * FROM `chats` WHERE `post_id` IS NULL;')
             return list(result)
     def add_chat_to_post(self, postid, chatid):
         with self.connection:
@@ -86,6 +96,27 @@ class DBclass:
     def updatecompleterstatus(self, completer_id, isactive):
         with self.connection:
             self.cursor.execute("UPDATE `completer` SET `isactive` = ? WHERE `completer_id` = ?", (isactive, completer_id,))
+    def createpayment(self, price):
+        with self.connection:
+            self.cursor.execute(
+                "INSERT INTO `payments` (`price`) VALUES (?)",
+                (price,))
+            payid = self.cursor.lastrowid
+            return payid
+    def giveorderid(self, id, order_id):
+        with self.connection:
+            self.cursor.execute("UPDATE `payments` SET `orderid` = ? WHERE `id` = ?;", (order_id, id,))
+    def updateorderstatus(self, id, orderstatus):
+        with self.connection:
+            self.cursor.execute("UPDATE `payments` SET `orderstatus` = ? WHERE `id` = ?;", (orderstatus, id,))
+    def getpaymentbyid(self, id):
+        with self.connection:
+            result = self.cursor.execute("SELECT * FROM `payments` WHERE `id` = ?;", (id,))
+            return list(result)
+    def updatepostcompleter(self, id, completer_id):
+        with self.connection:
+            result = self.cursor.execute("UPDATE post SET completer = ? WHERE `id` = ?;", (completer_id, id,))
+            return list(result)
 class Post():
     def __init__(self, active, author, completer, protection, theme, maintext, price, mediaid, docid):
         # clientside ---
