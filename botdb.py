@@ -128,7 +128,9 @@ class DBclass:
         with self.connection:
             result = self.cursor.execute('SELECT id FROM payments WHERE postid = ? ORDER BY id DESC LIMIT 1', (postid,))
             return list(result)
-
+    def updateactivestatus(self, postid, status):
+        with self.connection:
+            return self.cursor.execute("UPDATE post SET active = ? WHERE `id` = ?;", (status, postid,))
 class Post():
     def __init__(self, active, author, completer, protection, theme, maintext, price, mediaid, docid):
         # clientside ---
@@ -143,5 +145,11 @@ class Post():
         self.mediaid = mediaid
         self.docid = docid
     def tostring(self):
+        if self.active == 'Выполнено':
+            emoji = '✅ Выполнено'
+        elif self.protection == 'protected':
+            emoji = '🔵 Активный'
+        else:
+            emoji = '🔴 Активный'
 
-        return f"{'🔵 ' + self.active if self.protection == 'protected' else '🔴 ' + self.active} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else self.price + ' грн'}\n{'<b>Защищённый пост</b>' if self.protection == 'protected' else ''}\n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"
+        return f"{emoji} \n\n<b>{self.theme}</b> \n\n{self.maintext} \n\nЦена: {self.price if self.price == 'Договорная' else str(self.price) + ' грн'}\n{'<b>Защищённый пост</b>' if self.protection == 'protected' else ''}\n {self.mediaid if self.mediaid else ''} {self.docid[0] if self.docid else ''}"

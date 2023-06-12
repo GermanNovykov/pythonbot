@@ -1128,6 +1128,13 @@ async def changingp(message: types.Message, state: FSMContext):
             db.updatecompleterposts(chat[2], newcompposts)
             db.clear_chat(message.chat.id)
 
+            #change state to complete
+            db.updateactivestatus(post[0], 'Выполнено')
+
+            postinst = Post('Выполнено', post[2], post[3], post[4], post[5], post[6], int(post[7]), '', '')
+            message_id = re.search(r'/(\d+)$', post[10]).group(1)
+            await bot.edit_message_text(postinst.tostring(), publicationbotid, message_id, parse_mode=types.ParseMode.HTML)
+
             await bot.unpin_all_chat_messages(message.chat.id)
 
             if chat[2] != superuserid:
@@ -1138,7 +1145,7 @@ async def changingp(message: types.Message, state: FSMContext):
                 await bot.unban_chat_member(message.chat.id, chat[3])
 
 
-
+            await state.finish()
             await message.answer('Сделка завершена')
         else:
             await message.answer('Сделка продолжается')
