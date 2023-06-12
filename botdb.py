@@ -86,9 +86,9 @@ class DBclass:
     def add_chat_to_post(self, postid, chatid):
         with self.connection:
             self.cursor.execute('UPDATE `post` SET `chat` = ? WHERE `id` = ?', (chatid, postid,))
-    def createcompleter(self, completer_id, name, email, date, phone, isactive, bal):
+    def createcompleter(self, completer_id, name, email, date, phone, isactive, bal, postscompleted):
         with self.connection:
-            self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `email`, `date`, `phone`, `isactive`, `balance`) VALUES (?, ?, ?, ?, ?, ?, ?)", (completer_id, name, email, date, phone, isactive, bal))
+            self.cursor.execute("INSERT INTO `completer` (`completer_id`, `name`, `email`, `date`, `phone`, `isactive`, `balance`, `postscompleted`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (completer_id, name, email, date, phone, isactive, bal, postscompleted,))
     def getcompleter(self, completer_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `completer` WHERE `completer_id` = ?;', (completer_id,))
@@ -96,11 +96,17 @@ class DBclass:
     def updatecompleterstatus(self, completer_id, isactive):
         with self.connection:
             self.cursor.execute("UPDATE `completer` SET `isactive` = ? WHERE `completer_id` = ?", (isactive, completer_id,))
-    def createpayment(self, price):
+    def updatecompleterposts(self, completer_id, postscompleted):
+        with self.connection:
+            self.cursor.execute("UPDATE `completer` SET `postscompleted` = ? WHERE `completer_id` = ?", (postscompleted, completer_id,))
+    def updcompbal(self, completer_id, bal):
+        with self.connection:
+            self.cursor.execute("UPDATE `completer` SET `balance` = ? WHERE `completer_id` = ?", (bal, completer_id,))
+    def createpayment(self, price, postid):
         with self.connection:
             self.cursor.execute(
-                "INSERT INTO `payments` (`price`) VALUES (?)",
-                (price,))
+                "INSERT INTO `payments` (`price`, `postid`) VALUES (?, ?)",
+                (price, postid,))
             payid = self.cursor.lastrowid
             return payid
     def giveorderid(self, id, order_id):
@@ -117,6 +123,12 @@ class DBclass:
         with self.connection:
             result = self.cursor.execute("UPDATE post SET completer = ? WHERE `id` = ?;", (completer_id, id,))
             return list(result)
+
+    def payidbypost(self, postid):
+        with self.connection:
+            result = self.cursor.execute('SELECT id FROM payments WHERE postid = ? ORDER BY id DESC LIMIT 1', (postid,))
+            return list(result)
+
 class Post():
     def __init__(self, active, author, completer, protection, theme, maintext, price, mediaid, docid):
         # clientside ---

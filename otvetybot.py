@@ -69,6 +69,8 @@ class MyChats(StatesGroup):
     backodelete = State()
 class ChatChangePrice(StatesGroup):
     changingprice = State()
+class DealCompleting(StatesGroup):
+    completea = State()
 # USER SIDE ----------------------------------------------------
 # start handler - give menu
 @dp.message_handler(commands=['start', 'menu'], state='*')
@@ -144,22 +146,75 @@ async def command_start(message: types.Message, state: FSMContext):
 
             await message.answer(f'Здравствуйте, это бот паблика «TurtleUA», выберите одно действие из меню.', reply_markup=markup)
         elif message.chat.id in [int(item[0]) for item in db.getallchats()]:
+            # if user already payed, another menu pops up
+            chat = db.getchatdetails(message.chat.id)[0]
+            post = db.findpost(chat[4])[0]
+            lastpay = db.payidbypost(post[0])
 
-            #chatmenu1
-            encoded_data = urllib.parse.urlencode({
-                "user": message.from_user.id,
-                "chatid": message.chat.id,
-            })
+            if lastpay:
+                encoded_data = urllib.parse.urlencode({
+                    "user": message.from_user.id,
+                    "chatid": message.chat.id,
+                })
 
-            markup = types.InlineKeyboardMarkup(row_width=1)
-            item1 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encoded_data}")
-            item2 = types.InlineKeyboardButton("Оплатить", callback_data=f"payprice{encoded_data}")
-            item3 = types.InlineKeyboardButton("Позвать администратора", callback_data=f"calladminchat{encoded_data}")
-            item4 = types.InlineKeyboardButton("Отменить сделку", callback_data=f"chatdealrefuse{encoded_data}")
+                payment = db.getpaymentbyid(lastpay[0][0])[0]
+                print(payment)
+                if payment[2] == 'approved':
+                    m2 = types.ReplyKeyboardRemove()
+                    delmes = await bot.send_message(message.chat.id, "Загрузка...", reply_markup=m2)
+                    await bot.delete_message(message.chat.id, delmes.message_id)
 
-            markup.add(item1, item2, item3, item4)
+                    # chatmenu1
 
-            await bot.send_message(message.chat.id, "Нажмите на кнопку из меню", reply_markup=markup)
+                    markup = types.InlineKeyboardMarkup(row_width=1)
+                    item1 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encoded_data}")
+                    item2 = types.InlineKeyboardButton("Завершить сделку", callback_data=f"dealcomplete{encoded_data}")
+                    item3 = types.InlineKeyboardButton("Позвать администратора",
+                                                       callback_data=f"calladminchat{encoded_data}")
+                    item4 = types.InlineKeyboardButton("Отменить сделку", callback_data=f"chatdealrefuse{encoded_data}")
+
+                    markup.add(item1, item2, item3, item4)
+
+                    await bot.send_message(message.chat.id, "Нажмите на кнопку из меню", reply_markup=markup)
+                else:
+
+                    m2 = types.ReplyKeyboardRemove()
+                    delmes = await bot.send_message(message.chat.id, "Загрузка...", reply_markup=m2)
+                    await bot.delete_message(message.chat.id, delmes.message_id)
+
+                    # chatmenu1
+
+                    markup = types.InlineKeyboardMarkup(row_width=1)
+                    item1 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encoded_data}")
+                    item2 = types.InlineKeyboardButton("Завершить сделку", callback_data=f"dealcomplete{encoded_data}")
+                    item3 = types.InlineKeyboardButton("Позвать администратора",
+                                                       callback_data=f"calladminchat{encoded_data}")
+                    item4 = types.InlineKeyboardButton("Отменить сделку", callback_data=f"chatdealrefuse{encoded_data}")
+
+                    markup.add(item1, item2, item3, item4)
+
+                    await bot.send_message(message.chat.id, "Нажмите на кнопку из меню", reply_markup=markup)
+            else:
+                encoded_data = urllib.parse.urlencode({
+                    "user": message.from_user.id,
+                    "chatid": message.chat.id,
+                })
+                #removemarkp
+                m2 = types.ReplyKeyboardRemove()
+                delmes = await bot.send_message(message.chat.id, "Загрузка...", reply_markup=m2)
+                await bot.delete_message(message.chat.id, delmes.message_id)
+
+
+
+                markup = types.InlineKeyboardMarkup(row_width=1)
+                item1 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encoded_data}")
+                item2 = types.InlineKeyboardButton("Оплатить", callback_data=f"payprice{encoded_data}")
+                item3 = types.InlineKeyboardButton("Позвать администратора", callback_data=f"calladminchat{encoded_data}")
+                item4 = types.InlineKeyboardButton("Отменить сделку", callback_data=f"chatdealrefuse{encoded_data}")
+
+                markup.add(item1, item2, item3, item4)
+
+                await bot.send_message(message.chat.id, "Нажмите на кнопку из меню", reply_markup=markup)
 #start2
 @dp.message_handler(lambda message: message.text in ['Новый пост', 'Мои посты', 'Мои деньги', 'Мои чаты', 'Стать выполнителем'], state='*')
 async def starthandlertwo(message: types.Message, state: FSMContext):
@@ -869,7 +924,7 @@ async def becomecomponephone(message: types.Message, state: FSMContext):
         await bot.send_message(message.from_user.id, "Отменено", reply_markup=markup)
     else:
         async with state.proxy() as data:
-            db.createcompleter(message.from_user.id, data["name"], data["email"], data["date"], data["phone"], "no", 0)
+            db.createcompleter(message.from_user.id, data["name"], data["email"], data["date"], data["phone"], "no", 0, 0)
             #send to superuser
 
             encoded_data = urllib.parse.urlencode({
@@ -920,45 +975,57 @@ async def pay(call: types.CallbackQuery, state: FSMContext):
 
     chat = db.chat_byid(call.message.chat.id)[0]
     post = db.findpost(chat[4])[0]
+    if type(post[7]) == float:
+        price = int(post[7]) + 5
+        invitelink = await bot.create_chat_invite_link(call.message.chat.id)
+        amount = int(price) * 100
+        order_desc = 'TurtleBot payment'
+        response_url = invitelink.invite_link
+        currency = 'UAH'
+        payid = db.createpayment(price, post[0])
+        order_id = payid + 1
+        db.giveorderid(payid, order_id)
+        result = api.checkout(order_id, amount, order_desc, response_url, currency)
 
-    price = int(post[7]) + 5
+        if result.get('response') and 'error_message' in result['response']:
+            error_message = result['response']['error_message']
+            print(error_message)
+            await bot.send_message("Ошибка, попробуйте ещё раз")
+        else:
+            markup = types.InlineKeyboardMarkup()
+            item1 = types.InlineKeyboardButton("Оплатить", url=result['response']['checkout_url'])
+            item2 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encodeddata}")
+            curstatus = api.order_status(str(order_id))['response']['order_status']
 
-    amount = int(price) * 100
-    order_desc = 'TurtleBot payment'
-    response_url = 'https://t.me/otvetynaizibot'
-    currency = 'UAH'
-    payid = db.createpayment(price)
-    order_id = payid + 1
-    db.giveorderid(payid, order_id)
-    result = api.checkout(order_id, amount, order_desc, response_url, currency)
-    print(result)
-    if result.get('response') and 'error_message' in result['response']:
-        error_message = result['response']['error_message']
-        print(error_message)
-        await bot.send_message("Ошибка, попробуйте ещё раз")
+            db.updateorderstatus(payid, curstatus)
+            markup.add(item1, item2)
+            await bot.edit_message_text(f"{db.finduserbyid(chat[3])[0][2]}, чтобы оплатить сделку, вам нужно нажать кнопку <b>Оплатить</b> и выбрать удобный способ оплаты\n\nПосле успешной оплаты прийдёт уведомление и {db.getcompleter(chat[2])[0][2]} может начать выполнять задание\n\n<b>К оплате:</b> {price} грн\n<b>Комиссия: 5 грн</b>", call.message.chat.id, call.message.message_id, parse_mode=types.ParseMode.HTML, reply_markup=markup)
+
+        async def check_payment_status():
+            while True:
+                latest_payid = db.payidbypost(post[0])[0][0]
+                if payid == latest_payid:
+                    condition = db.getpaymentbyid(payid)[0][2]
+
+                    if condition == 'created':
+                        checking = api.order_status(str(order_id))['response']['order_status']
+                        if checking == 'approved':
+                            await bot.delete_message(call.message.chat.id, call.message.message_id)
+                            db.updateorderstatus(payid, checking)
+                            await bot.send_message(call.message.chat.id,
+                                                   f"<b>Платёж проведён успешно</b>\n\n{db.getcompleter(chat[2])[0][2]} может приступать к выполнению",
+                                                   parse_mode=types.ParseMode.HTML)
+                            db.updatepostcompleter(post[0], chat[2])
+                            break
+                    await asyncio.sleep(2)
+                else:
+                    break
+
+        asyncio.create_task(check_payment_status())
+
+
     else:
-        markup = types.InlineKeyboardMarkup()
-        item1 = types.InlineKeyboardButton("Оплатить", url=result['response']['checkout_url'])
-        item2 = types.InlineKeyboardButton("Сменить цену", callback_data=f"changeprice{encodeddata}")
-        curstatus = api.order_status(str(order_id))['response']['order_status']
-        print(curstatus)
-        db.updateorderstatus(payid, curstatus)
-        markup.add(item1, item2)
-        await bot.edit_message_text(f"{db.finduserbyid(chat[3])[0][2]}, чтобы оплатить сделку, вам нужно нажать кнопку <b>Оплатить</b> и выбрать удобный способ оплаты\n\nПосле успешной оплаты прийдёт уведомление и {db.getcompleter(chat[2])[0][2]} может начать выполнять задание\n\n<b>К оплате:</b> {price} грн\n<b>Комиссия: 5 грн</b>", call.message.chat.id, call.message.message_id, parse_mode=types.ParseMode.HTML, reply_markup=markup)
-
-    async def check_payment_status():
-        await asyncio.sleep(2)
-        while db.getpaymentbyid(payid)[0][2] == 'created':
-
-            checking = api.order_status(str(order_id))['response']['order_status']
-            if checking == 'approved':
-                await bot.delete_message(call.message.chat.id, call.message.message_id)
-                db.updateorderstatus(payid, checking)
-                await bot.send_message(f"<b>Платёж проведён успешно</b>\n\n{db.getcompleter(chat[2])[0][2]} может приступать к выполнению")
-                db.updatepostcompleter(post[0], chat[2])
-            await asyncio.sleep(2)
-
-    asyncio.create_task(check_payment_status())
+        await call.message.answer("Нажмите ***Поменять цену*** и укажите новую цену", parse_mode=types.ParseMode.MARKDOWN_V2)
 
 @dp.callback_query_handler(lambda call: call.data.startswith('mychatback'), state=MyChats.backodelete)
 async def mychatback(call: types.CallbackQuery):
@@ -979,11 +1046,11 @@ async def mychatback(call: types.CallbackQuery):
 async def changeprice(call: types.CallbackQuery):
     chatindb = db.chat_byid(call.message.chat.id)[0]
     post = db.findpost(chatindb[4])[0]
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add("Отменить")
     await bot.delete_message(call.message.chat.id, call.message.message_id)
 
-    await bot.send_message(call.message.chat.id, f"<b>СТАРАЯ ЦЕНА:</b> {post[7]}\nНазвите новую цену или нажмите <b>Отменить</b>\n\nНапример, чтобы указать цену в 100 грн, введите «100»", reply_markup=markup, parse_mode=types.ParseMode.HTML)
+    await bot.send_message(call.message.chat.id, f"<b>СТАРАЯ ЦЕНА:</b> {f'{int(post[7])} грн' if type(post[7]) == float else 'Договорная'}\nНазвите новую цену или нажмите <b>Отменить</b>\n\nНапример, чтобы указать цену в 100 грн, введите «100»", reply_markup=markup, parse_mode=types.ParseMode.HTML)
     await ChatChangePrice.changingprice.set()
 @dp.message_handler(state=ChatChangePrice.changingprice)
 async def changingp(message: types.Message, state: FSMContext):
@@ -1025,13 +1092,55 @@ async def changingp(message: types.Message, state: FSMContext):
 
         markup.add(item1, item2, item3, item4)
 
-        await bot.send_message(message.chat.id, f"Цена обновлена, новая цена: {db.findpost(post[0])[0][7]} грн")
+        await bot.send_message(message.chat.id, f"Цена обновлена, новая цена: {int(db.findpost(post[0])[0][7])} грн")
         await bot.send_message(message.chat.id, "Нажмите на кнопку из меню", reply_markup=markup)
         await state.finish()
     else:
         await bot.send_message(message.chat.id,
                                f"Ошибка в указании цены, правильно указать цену без текста\nНапример, чтобы указать цену в 100 грн, введите «100»")
 
+#dealcomplete
+@dp.callback_query_handler(lambda call: call.data.startswith('dealcomplete'))
+async def dealcompleting(call: types.CallbackQuery, state: FSMContext):
+    chat = db.chat_byid(call.message.chat.id)[0]
+    post = db.findpost(chat[4])[0]
 
+    usermember = await bot.get_chat_member(call.message.chat.id, chat[3])
+    await DealCompleting.completea.set()
+    await bot.edit_message_text(f"{md.bold('Вы уверенны, что хотите завершить сделку?')}\n\nЗавершение сделки означает, что заказчик получил решение и оно его устраивает\nДеньги за сделку получит выполнитель\n\n{md.link(usermember.user.first_name, 'https://telegram.me/' + usermember.user.username)} чтобы завершить сделку, напишите этот текст: \n\n`Да, я абсолютно уверен`\nНажмите, чтобы скопировать\n\n{md.bold('Внимание!')}\nПосле завершения сделки чат будет удалён\n{md.link(usermember.user.first_name, 'https://telegram.me/' + usermember.user.username)}, сохраните решение заранее", call.message.chat.id, call.message.message_id, parse_mode=types.ParseMode.MARKDOWN_V2, disable_web_page_preview=True)
+
+@dp.message_handler(state=DealCompleting.completea)
+async def changingp(message: types.Message, state: FSMContext):
+    chat = db.chat_byid(message.chat.id)[0]
+    post = db.findpost(chat[4])[0]
+
+    if message.from_user.id == chat[3]:
+        if message.text == "Да, я абсолютно уверен":
+            #clear the chat. give money to completer, give +1 post for completer, ask to rate the completer. change post status to Выполнено
+            chat = db.chat_byid(message.chat.id)[0]
+            completer = db.getcompleter(chat[2])[0]
+            newcompbal = completer[7] + post[7]
+            print(newcompbal)
+            newcompposts = completer[8] + 1
+            print(newcompposts)
+            #give mone
+            db.updcompbal(chat[2], newcompbal)
+            db.updatecompleterposts(chat[2], newcompposts)
+            db.clear_chat(message.chat.id)
+
+            await bot.unpin_all_chat_messages(message.chat.id)
+
+            if chat[2] != superuserid:
+                await bot.kick_chat_member(message.chat.id, chat[2])
+                await bot.unban_chat_member(message.chat.id, chat[2])
+            if chat[3] != superuserid:
+                await bot.kick_chat_member(message.chat.id, chat[3])
+                await bot.unban_chat_member(message.chat.id, chat[3])
+
+
+
+            await message.answer('Сделка завершена')
+        else:
+            await message.answer('Сделка продолжается')
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
