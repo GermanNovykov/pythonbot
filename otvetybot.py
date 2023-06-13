@@ -71,6 +71,8 @@ class ChatChangePrice(StatesGroup):
     changingprice = State()
 class DealCompleting(StatesGroup):
     completea = State()
+class Withdrawing(StatesGroup):
+    entercard = State()
 # USER SIDE ----------------------------------------------------
 # start handler - give menu
 @dp.message_handler(commands=['start', 'menu'], state='*')
@@ -186,7 +188,7 @@ async def command_start(message: types.Message, state: FSMContext):
 
                     markup = types.InlineKeyboardMarkup(row_width=1)
                     item1 = types.InlineKeyboardButton("Поменять цену", callback_data=f"changeprice{encoded_data}")
-                    item2 = types.InlineKeyboardButton("Завершить сделку", callback_data=f"dealcomplete{encoded_data}")
+                    item2 = types.InlineKeyboardButton("Оплатить", callback_data=f"payprice{encoded_data}")
                     item3 = types.InlineKeyboardButton("Позвать администратора",
                                                        callback_data=f"calladminchat{encoded_data}")
                     item4 = types.InlineKeyboardButton("Отменить сделку", callback_data=f"chatdealrefuse{encoded_data}")
@@ -280,8 +282,11 @@ async def starthandlertwo(message: types.Message, state: FSMContext):
         # my bal 1
         elif message.text == 'Мои деньги':
             if db.getcompleter(message.from_user.id):
+                markup = types.InlineKeyboardMarkup()
+                item1 = types.InlineKeyboardButton('Вывести деньги', callback_data='withdraw')
+                markup.add(item1)
                 completer = db.getcompleter(message.from_user.id)[0]
-                await message.answer(f'На вашем балансе {completer[7]} грн\nПостов выполнено: {completer[8]}' if completer[8] else f'На вашем балансе {completer[7]} грн')
+                await message.answer(f'На вашем балансе {completer[7]} грн\nПостов выполнено: {completer[8]}' if completer[8] else f'На вашем балансе {completer[7]} грн', reply_markup=markup)
             else:
                 await message.answer('У вас нету средств')
 # New Post 2
@@ -564,19 +569,21 @@ async def mypostsshow(call: types.CallbackQuery, state: FSMContext):
 
     ind = str(call.data).replace('myposts', '')
     post = db.findallposts(call.message.chat.id)[int(ind)]
+
     markup = types.InlineKeyboardMarkup()
     item1 = types.InlineKeyboardButton('Удалить', callback_data='postdelete')
     item2 = types.InlineKeyboardButton('Назад', callback_data='postback')
     markup.add(item1, item2)
-
+    if post[4] != 'protected' and post[2] == 'Активный':
+        item3 = types.InlineKeyboardButton('Отметить как выполненое', callback_data='reglarpost')
+        markup.add(item3)
     async with state.proxy() as data:
         data["post"] = post
-
-    await bot.edit_message_text(f"<b>Статус:</b> {post[2]}\n<b>Выполнитель:</b> {post[3]}\n<b>Тип поста:</b> {'Защищённый пост' if post[4]=='protected' else 'Обычный пост'}\n<b>Тема:</b> {post[5]}\n<b>Задание:</b> {post[6]}\n<b>Цена:</b> {post[7]}", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode=types.ParseMode.HTML)
+    await bot.edit_message_text(f"<b>Статус:</b> {post[2]}\n<b>Выполнитель:</b> {db.getcompleter(post[3])[0][2] if db.getcompleter(post[3]) else post[3]}\n<b>Тип поста:</b> {'Защищённый пост' if post[4]=='protected' else 'Обычный пост'}\n<b>Тема:</b> {post[5]}\n<b>Задание:</b> {post[6]}\n<b>Цена:</b> {post[7]}", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode=types.ParseMode.HTML)
     await MyPosts.next()
 
 # My posts 3
-@dp.callback_query_handler(lambda call: call.data in ['postdelete', 'postback'], state=MyPosts.deleteorback)
+@dp.callback_query_handler(lambda call: call.data in ['postdelete', 'postback', 'reglarpost'], state=MyPosts.deleteorback)
 async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
     if call.data == 'postdelete':
         async with state.proxy() as data:
@@ -600,6 +607,15 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
             await bot.edit_message_text('Выберите одну публикацию', call.message.chat.id, call.message.message_id, reply_markup=markup)
         else:
             await bot.send_message(call.message.chat.id, "У вас нету публикаций")
+    elif call.data == 'reglarpost':
+        async with state.proxy() as data:
+            post = data['post']
+        db.updateactivestatus(post[0], 'Выполнено')
+        postinst = Post('Выполнено', post[2], post[3], post[4], post[5], post[6], post[7], '', '')
+        message_id = re.search(r'/(\d+)$', post[10]).group(1)
+        await bot.edit_message_text('Отмечено как выполнено', call.message.chat.id, call.message.message_id)
+        await bot.edit_message_text(postinst.tostring(), publicationbotid, message_id, parse_mode=types.ParseMode.HTML)
+
 # I take post 2
 @dp.callback_query_handler(lambda call: call.data.startswith('takeapprove') or call.data.startswith('takenot'), state='*')
 async def approvingproc(call: types.CallbackQuery, state: FSMContext):
@@ -801,35 +817,41 @@ async def chatdealrefuse(call: types.CallbackQuery, state: FSMContext):
     chat = db.chat_byid(call.message.chat.id)[0]
     post = db.findpost(chat[4])[0]
 
+    async with state.proxy() as data:
+        data['caller'] = call.message.from_user.id
+
     await bot.send_message(call.message.chat.id, "***Вы уверены, что вы хотите отменить сделку?***\n\nНапишите: `Да, я хочу отменить сделку`\n\nТекст можно скопировать, нажав на него\n***Важно*** После отмены чат будет удалён", parse_mode=types.ParseMode.MARKDOWN_V2)
     await CancelDeal.ackgnowledgment.set()
 
 
 @dp.message_handler(state=CancelDeal.ackgnowledgment)
 async def canceldealack(message: types.Message, state: FSMContext):
-    if message.text == "Да, я хочу отменить сделку":
-        chat = db.chat_byid(message.chat.id)[0]
+    async with state.proxy() as data:
+        caller = data['caller']
+    if message.from_user.id == caller:
+        if message.text == "Да, я хочу отменить сделку":
+            chat = db.chat_byid(message.chat.id)[0]
 
-        #chatdeletion
-        db.clearpostchatid(chat[4])
-        db.clear_chat(message.chat.id)
+            #chatdeletion
+            db.clearpostchatid(chat[4])
+            db.clear_chat(message.chat.id)
 
-        await bot.delete_message(chat_id=chat[2], message_id=chat[6])
-        await bot.delete_message(chat_id=chat[3], message_id=chat[5])
+            await bot.delete_message(chat_id=chat[2], message_id=chat[6])
+            await bot.delete_message(chat_id=chat[3], message_id=chat[5])
 
-        await message.answer("Сделка отменена")
-        await state.finish()
-        await bot.unpin_all_chat_messages(message.chat.id)
+            await message.answer("Сделка отменена")
+            await state.finish()
+            await bot.unpin_all_chat_messages(message.chat.id)
 
-        if chat[2] != superuserid:
-            await bot.kick_chat_member(message.chat.id, chat[2])
-            await bot.unban_chat_member(message.chat.id, chat[2])
-        if chat[3] != superuserid:
-            await bot.kick_chat_member(message.chat.id, chat[3])
-            await bot.unban_chat_member(message.chat.id, chat[3])
-    else:
-        await message.answer("Сделка не отменена")
-        await state.finish()
+            if chat[2] != superuserid:
+                await bot.kick_chat_member(message.chat.id, chat[2])
+                await bot.unban_chat_member(message.chat.id, chat[2])
+            if chat[3] != superuserid:
+                await bot.kick_chat_member(message.chat.id, chat[3])
+                await bot.unban_chat_member(message.chat.id, chat[3])
+        else:
+            await message.answer("Сделка не отменена")
+            await state.finish()
 
 #becomecomp 2
 @dp.message_handler(state=BecomeCompleter.name)
@@ -1120,9 +1142,7 @@ async def changingp(message: types.Message, state: FSMContext):
             chat = db.chat_byid(message.chat.id)[0]
             completer = db.getcompleter(chat[2])[0]
             newcompbal = completer[7] + post[7]
-            print(newcompbal)
             newcompposts = completer[8] + 1
-            print(newcompposts)
             #give mone
             db.updcompbal(chat[2], newcompbal)
             db.updatecompleterposts(chat[2], newcompposts)
@@ -1149,5 +1169,44 @@ async def changingp(message: types.Message, state: FSMContext):
             await message.answer('Сделка завершена')
         else:
             await message.answer('Сделка продолжается')
+            await state.finish()
+@dp.callback_query_handler(lambda call: call.data == 'withdraw')
+async def completwithdraw(call: types.CallbackQuery, state: FSMContext):
+    print(db.getcompleter(call.message.chat.id)[0][7])
+    if db.getcompleter(call.message.chat.id)[0][7]>0:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+        await bot.send_message(call.message.chat.id, "Введите номер карты, на которую будет совершен перевод")
+        await Withdrawing.entercard.set()
+    else:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+        await bot.send_message(call.message.chat.id, "У вас нету средств")
+@dp.message_handler(state=Withdrawing.entercard)
+async def withcheck(message: types.Message, state: FSMContext):
+    completer = db.getcompleter(message.from_user.id)[0]
+    url = f"https://telegram.me/{message.from_user.username}"
+    print(completer)
+    encoded_data = urllib.parse.urlencode({
+        "completerid": message.chat.id,
+    })
+    markup = types.InlineKeyboardMarkup()
+    item1 = types.InlineKeyboardButton('Оплата завершена', callback_data=f'withsuccess{encoded_data}')
+    item2 = types.InlineKeyboardButton('Контакт выполнителя', url=url)
+    markup.add(item1, item2)
+
+    await bot.send_message(message.chat.id, f'{md.bold("Заявка на вывод денег отправлена")}\n\nАдминистратор проверит заявку в течении 24 часа и отправит деньги на карту', parse_mode=types.ParseMode.MARKDOWN_V2)
+    await bot.send_message(superuserid, f"<b>Заявка на вывод денег от {completer[2]}</b>\nДанные выполнителя: {completer}\n\nУказанная карта для перевода: {message.text}", parse_mode=types.ParseMode.HTML, reply_markup=markup)
+    await state.finish()
+@dp.callback_query_handler(lambda call: call.data.startswith('withsuccess'))
+async def oplacheno(call: types.CallbackQuery, state: FSMContext):
+
+
+    encodeddata = call.data[11:]
+    decoded_data = urllib.parse.parse_qs(encodeddata)
+    completer = db.getcompleter(decoded_data['completerid'][0])[0]
+
+    db.updcompbal(completer[1], 0)
+
+    await bot.send_message(completer[1], "Администратор отправил вам деньги на карту")
+    await bot.edit_message_text(f"{completer[2]} оплата завершена\nНовый баланс выполнителя: {db.getcompleter(decoded_data['completerid'][0])[0][7]}", call.message.chat.id, call.message.message_id)
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
