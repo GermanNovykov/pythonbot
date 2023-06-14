@@ -109,6 +109,9 @@ class DBclass:
                 (price, postid,))
             payid = self.cursor.lastrowid
             return payid
+    def deletepaymentbypostid(self, postid):
+        with self.connection:
+            self.cursor.execute('UPDATE `payments` SET `postid` = NULL, `orderstatus` = ? WHERE `postid` = ?;', ('deleted', postid,))
     def giveorderid(self, id, order_id):
         with self.connection:
             self.cursor.execute("UPDATE `payments` SET `orderid` = ? WHERE `id` = ?;", (order_id, id,))

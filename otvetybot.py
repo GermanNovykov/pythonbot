@@ -221,6 +221,7 @@ async def command_start(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text in ['Новый пост', 'Мои посты', 'Мои деньги', 'Мои чаты', 'Стать выполнителем'], state='*')
 async def starthandlertwo(message: types.Message, state: FSMContext):
     if message.chat.type == 'private':
+        await state.finish()
         # New Post 1
         if message.text == 'Новый пост':
 
@@ -588,6 +589,8 @@ async def mypostsdelete(call: types.CallbackQuery, state: FSMContext):
     if call.data == 'postdelete':
         async with state.proxy() as data:
             db.deletepost(data["post"][0])
+            db.deletepaymentbypostid(data['post'][0])
+            db.clear_chat(data['post'][11])
             message_id = re.search(r'/(\d+)$', data["post"][10]).group(1)
             await bot.delete_message(publicationbotid, message_id)
 
@@ -783,6 +786,8 @@ async def admindelete(call: types.CallbackQuery, state: FSMContext):
             await bot.unban_chat_member(post[11], chat[3])
 
     db.deletepost(post[0])
+    db.deletepaymentbypostid(post[0])
+
     message_id = re.search(r'/(\d+)$', post[10]).group(1)
     await bot.delete_message(publicationbotid, message_id)
     await bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -1012,7 +1017,8 @@ async def pay(call: types.CallbackQuery, state: FSMContext):
         if result.get('response') and 'error_message' in result['response']:
             error_message = result['response']['error_message']
             print(error_message)
-            await bot.send_message("Ошибка, попробуйте ещё раз")
+            await bot.delete_message(call.message.chat.id, call.message.message_id)
+            await bot.send_message(call.message.chat.id, "Ошибка, попробуйте ещё раз")
         else:
             markup = types.InlineKeyboardMarkup()
             item1 = types.InlineKeyboardButton("Оплатить", url=result['response']['checkout_url'])
@@ -1023,27 +1029,27 @@ async def pay(call: types.CallbackQuery, state: FSMContext):
             markup.add(item1, item2)
             await bot.edit_message_text(f"{db.finduserbyid(chat[3])[0][2]}, чтобы оплатить сделку, вам нужно нажать кнопку <b>Оплатить</b> и выбрать удобный способ оплаты\n\nПосле успешной оплаты прийдёт уведомление и {db.getcompleter(chat[2])[0][2]} может начать выполнять задание\n\n<b>К оплате:</b> {price} грн\n<b>Комиссия: 5 грн</b>", call.message.chat.id, call.message.message_id, parse_mode=types.ParseMode.HTML, reply_markup=markup)
 
-        async def check_payment_status():
-            while True:
-                latest_payid = db.payidbypost(post[0])[0][0]
-                if payid == latest_payid:
-                    condition = db.getpaymentbyid(payid)[0][2]
+            async def check_payment_status():
+                while True:
+                    latest_payid = db.payidbypost(post[0])[0][0]
+                    if payid == latest_payid:
+                        condition = db.getpaymentbyid(payid)[0][2]
 
-                    if condition == 'created':
-                        checking = api.order_status(str(order_id))['response']['order_status']
-                        if checking == 'approved':
-                            await bot.delete_message(call.message.chat.id, call.message.message_id)
-                            db.updateorderstatus(payid, checking)
-                            await bot.send_message(call.message.chat.id,
-                                                   f"<b>Платёж проведён успешно</b>\n\n{db.getcompleter(chat[2])[0][2]} может приступать к выполнению",
-                                                   parse_mode=types.ParseMode.HTML)
-                            db.updatepostcompleter(post[0], chat[2])
-                            break
-                    await asyncio.sleep(2)
-                else:
-                    break
+                        if condition == 'created':
+                            checking = api.order_status(str(order_id))['response']['order_status']
+                            if checking == 'approved':
+                                await bot.delete_message(call.message.chat.id, call.message.message_id)
+                                db.updateorderstatus(payid, checking)
+                                await bot.send_message(call.message.chat.id,
+                                                       f"<b>Платёж проведён успешно</b>\n\n{db.getcompleter(chat[2])[0][2]} может приступать к выполнению",
+                                                       parse_mode=types.ParseMode.HTML)
+                                db.updatepostcompleter(post[0], chat[2])
+                                break
+                        await asyncio.sleep(2)
+                    else:
+                        break
 
-        asyncio.create_task(check_payment_status())
+            asyncio.create_task(check_payment_status())
 
 
     else:
