@@ -87,29 +87,12 @@ async def command_start(message: types.Message, state: FSMContext):
             if db.getcompleter(message.from_user.id)[0][6] == 'yes':
                 if message.from_user.id == post[1]:
                     await bot.send_message(message.from_user.id, 'Вы кликнули на свой же пост!')
-                    # ------------------------
+                    # ------------------------ttttttttttttt
+
+                else:
                     if db.postidchat(post[0]):
                         if db.postidchat(post[0])[0][2] == message.chat.id:
                             await message.answer("Вы не можете отправить больше одной заявки на один пост")
-                    else:
-                        await message.answer(f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}", parse_mode=types.ParseMode.HTML)
-
-                        # data-----------------------------
-                        encoded_data = urllib.parse.urlencode({
-                            "completer": message.from_user.id,
-                            "postid": post[0]
-                        })
-
-                        markup = types.InlineKeyboardMarkup()
-                        item1 = types.InlineKeyboardButton('Подтвердить', callback_data=f'takeapprove{encoded_data}')
-                        item2 = types.InlineKeyboardButton('Отклонить', callback_data=f'takenot{encoded_data}')
-                        markup.add(item1, item2)
-
-                        await bot.send_message(post[1], f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}", reply_markup=markup, parse_mode=types.ParseMode.HTML)
-
-                else:
-                    if db.postidchat(post[0]) and db.postidchat(post[0])[0][2] == message.chat.id:
-                        await message.answer("Вы не можете отправить больше одной заявки на один пост")
                     else:
                         await message.answer(
                             f"Вы отправили заявку чтобы выполнить задание. Автор рассмотрит эту заявку и сможет ее принять, после чего вы будете направлены в личный чат {hide_link(post[10])}",
@@ -129,6 +112,7 @@ async def command_start(message: types.Message, state: FSMContext):
                         await bot.send_message(post[1],
                                                f"Пользователь {message.from_user.full_name} готов выполнить ваше задание {hide_link(post[10])}",
                                                reply_markup=markup, parse_mode=types.ParseMode.HTML)
+
             else:
                 await message.answer("Вы не можете брать посты, потому что администратор не рассмотрел вашей заявки или отклонил её")
         else:
