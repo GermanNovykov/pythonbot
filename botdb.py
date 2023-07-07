@@ -11,7 +11,17 @@ class DBclass:
             self.cursor.execute(
                 'INSERT INTO `user` (`user_id`, `fullname`) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM `user` WHERE `user_id` = ?)',
                 (user_id, fullname, user_id))
+    def increaseuserpsot(self, user_id):
+        with self.connection:
+            self.cursor.execute('UPDATE `user` SET `poststoday` = `poststoday` + 1 WHERE `user_id` = ?', (user_id,))
 
+    def reset_poststoday(self):
+        with self.connection:
+            self.cursor.execute('UPDATE `user` SET `poststoday` = 0')
+
+    def resetuserposts(self, user_id):
+        with self.connection:
+            self.cursor.execute('UPDATE `user` SET `poststoday` = `poststoday` - 1 WHERE `user_id` = ?', (user_id,))
     def finduserbyid(self, user_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `user` WHERE `user_id` = ?;', (user_id,))
@@ -25,6 +35,9 @@ class DBclass:
         with self.connection:
             self.cursor.execute("UPDATE `post` SET `link` = ? WHERE `id` = ?;", (link, post_id,))
 
+    def giveadmlink(self, post_id, link):
+        with self.connection:
+            self.cursor.execute("UPDATE `post` SET `admlink` = ? WHERE `id` = ?;", (link, post_id,))
     def findallposts(self, user_id):
         with self.connection:
             result = self.cursor.execute('SELECT * FROM `post` WHERE `user_id` = ?;', (user_id,))
